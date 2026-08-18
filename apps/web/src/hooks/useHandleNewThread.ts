@@ -101,6 +101,13 @@ export function useNewThreadHandler() {
         setModelSelection,
       } = useComposerDraftStore.getState();
       const currentRouteTarget = getCurrentRouteTarget();
+      const isCurrentProjectBoard = router.state.matches.some(
+        (match) =>
+          match.routeId === "/_chat/$environmentId/board/$projectId" &&
+          match.params.environmentId === projectRef.environmentId &&
+          match.params.projectId === projectRef.projectId,
+      );
+      const shouldNavigate = options?.navigate ?? !isCurrentProjectBoard;
       // A new thread carries the user's *working mode* from the thread being
       // viewed: model (including options like reasoning effort and context
       // window), permission mode, and interaction mode. Branch, worktree, and
@@ -314,7 +321,7 @@ export function useNewThreadHandler() {
           ) {
             return opened;
           }
-          if (options?.navigate !== false) {
+          if (shouldNavigate) {
             await router.navigate({
               to: "/draft/$draftId",
               params: { draftId: emptyStoredDraftThread.draftId },
@@ -390,7 +397,7 @@ export function useNewThreadHandler() {
             ...pickExplicitWorkspaceOptions(options),
           });
           carryComposerContentTo(racedDraft.draftId);
-          if (options?.navigate !== false) {
+          if (shouldNavigate) {
             await router.navigate({
               to: "/draft/$draftId",
               params: { draftId: racedDraft.draftId },
@@ -425,7 +432,7 @@ export function useNewThreadHandler() {
         }
         carryComposerContentTo(draftId);
 
-        if (options?.navigate !== false) {
+        if (shouldNavigate) {
           await router.navigate({
             to: "/draft/$draftId",
             params: { draftId },
