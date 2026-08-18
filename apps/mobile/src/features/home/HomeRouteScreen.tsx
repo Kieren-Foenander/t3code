@@ -219,6 +219,12 @@ export function HomeRouteScreen() {
               },
             });
           }}
+          onOpenProjectBoard={(project) =>
+            navigation.navigate("ProjectBoard", {
+              environmentId: project.environmentId,
+              projectId: project.id,
+            })
+          }
           onStartNewTask={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
           onThreadSortOrderChange={setThreadSortOrder}
           pendingTasks={pendingTasks}

@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import { CheckpointRef } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
@@ -15,6 +16,7 @@ import * as WorkspacePaths from "./WorkspacePaths.ts";
 const ProjectLayer = WorkspaceFileSystem.layer.pipe(
   Layer.provide(WorkspacePaths.layer),
   Layer.provide(WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer))),
+  Layer.provide(VcsDriverRegistry.layer.pipe(Layer.provide(VcsProcess.layer))),
 );
 
 const TestLayer = Layer.empty.pipe(
@@ -22,6 +24,7 @@ const TestLayer = Layer.empty.pipe(
   Layer.provideMerge(WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer))),
   Layer.provideMerge(WorkspacePaths.layer),
   Layer.provideMerge(VcsDriverRegistry.layer.pipe(Layer.provide(VcsProcess.layer))),
+  Layer.provideMerge(VcsProcess.layer),
   Layer.provide(
     ServerConfig.ServerConfig.layerTest(process.cwd(), {
       prefix: "t3-workspace-files-test-",
@@ -70,6 +73,38 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
           byteLength: 26,
           truncated: false,
         });
+      }),
+    );
+
+    it.effect("reads pinned file content from a checkpoint ref", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const vcsProcess = yield* VcsProcess.VcsProcess;
+        const cwd = yield* makeTempDir;
+        const runGit = (args: ReadonlyArray<string>) =>
+          vcsProcess.run({
+            operation: "WorkspaceFileSystem.test.checkpoint",
+            command: "git",
+            args,
+            cwd,
+          });
+        yield* runGit(["init"]);
+        yield* runGit(["config", "user.name", "T3 Test"]);
+        yield* runGit(["config", "user.email", "test@t3.local"]);
+        yield* writeTextFile(cwd, "src/index.ts", "checkpoint contents\n");
+        yield* runGit(["add", "src/index.ts"]);
+        yield* runGit(["commit", "-m", "checkpoint"]);
+        yield* runGit(["update-ref", "refs/t3/checkpoints/thread-1/turn/1", "HEAD"]);
+        yield* writeTextFile(cwd, "src/index.ts", "live contents\n");
+
+        const result = yield* workspaceFileSystem.readFile({
+          cwd,
+          relativePath: "src/index.ts",
+          checkpointRef: CheckpointRef.make("refs/t3/checkpoints/thread-1/turn/1"),
+        });
+
+        expect(result.contents).toBe("checkpoint contents\n");
+        expect(result.truncated).toBe(false);
       }),
     );
 

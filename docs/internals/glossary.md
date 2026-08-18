@@ -8,6 +8,7 @@ This is a living glossary for T3 Code. It explains what common terms mean in thi
 
 - [Project and workspace](#project-and-workspace)
 - [Thread timeline](#thread-timeline)
+- [Project board](#project-board)
 - [Orchestration](#orchestration)
 - [Provider runtime](#provider-runtime)
 - [Checkpointing](#checkpointing)
@@ -41,6 +42,24 @@ A single user-to-assistant work cycle inside a thread. It starts with user input
 #### Activity
 
 A user-visible log item attached to a thread. In [the contracts][1], activities cover important non-message events like approvals, tool actions, and failures. They are projected into thread state in [projector.ts][4].
+
+### Project board
+
+#### Board
+
+The durable spatial workspace for one project. It contains thread frames, artifacts, relationships,
+and explicit agent grants while keeping camera and selection state local to each client. See
+[project-board.md][25].
+
+#### Board artifact
+
+A durable note, file reference, diagram shape, or soft group placed on a board. Artifacts have stable
+ids and revisions and may record the thread and turn that created them.
+
+#### Board grant
+
+Explicit read or edit authority from a board object to a thread. A connector is not a grant. The
+special whole-board grant includes future objects and can be revoked without changing prior messages.
 
 ### Orchestration
 
@@ -173,6 +192,7 @@ The file patch and changed-file summary for one turn. It is usually computed in 
 [16]: ./providers.md
 [17]: ../../apps/server/src/provider/Layers/CodexAdapter.ts
 [18]: ../user/permission-modes.md
+[25]: ./project-board.md
 [19]: ../../apps/server/src/checkpointing/CheckpointStore.ts
 [20]: ../../apps/server/src/checkpointing/CheckpointDiffQuery.ts
 [21]: ../../apps/server/src/persistence/Services/ProjectionCheckpoints.ts

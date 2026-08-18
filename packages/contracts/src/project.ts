@@ -1,5 +1,6 @@
 import * as Schema from "effect/Schema";
 import {
+  CheckpointRef,
   NonNegativeInt,
   PositiveInt,
   TrimmedNonEmptyString,
@@ -194,6 +195,7 @@ export class ProjectListEntriesError extends Schema.TaggedErrorClass<ProjectList
 export const ProjectReadFileInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_READ_FILE_PATH_MAX_LENGTH)),
+  checkpointRef: Schema.optional(CheckpointRef),
 });
 export type ProjectReadFileInput = typeof ProjectReadFileInput.Type;
 
@@ -220,6 +222,7 @@ export const ProjectFileOperation = Schema.Literals([
   "open",
   "stat",
   "read",
+  "read-checkpoint",
   "close",
   "make-directory",
   "write-file",

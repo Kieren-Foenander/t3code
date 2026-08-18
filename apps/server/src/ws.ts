@@ -10,6 +10,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import {
+  BOARD_WS_METHODS,
   DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL,
   AuthAccessStreamError,
   type AuthAccessStreamEvent,
@@ -63,6 +64,7 @@ import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/uns
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
+import * as BoardService from "./board/BoardService.ts";
 import * as ServerConfig from "./config.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
@@ -359,6 +361,7 @@ const makeWsRpcLayer = (
       const crypto = yield* Crypto.Crypto;
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
+      const board = yield* BoardService.BoardService;
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
@@ -1040,6 +1043,57 @@ const makeWsRpcLayer = (
           .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid);
 
       return WsRpcGroup.of({
+        [BOARD_WS_METHODS.dispatchCommand]: (command) =>
+          observeRpcEffect(BOARD_WS_METHODS.dispatchCommand, board.dispatch(command), {
+            "rpc.aggregate": "board",
+            "board.project_id": command.projectId,
+          }),
+        [BOARD_WS_METHODS.subscribe]: (input) =>
+          observeRpcStreamEffect(
+            BOARD_WS_METHODS.subscribe,
+            Effect.gen(function* () {
+              const liveBuffer =
+                yield* Queue.unbounded<
+                  Exclude<
+                    import("@t3tools/contracts").BoardStreamItem,
+                    { readonly kind: "snapshot" }
+                  >
+                >();
+              yield* Effect.forkScoped(
+                board.changes.pipe(
+                  Stream.filter((delta) => delta.projectId === input.projectId),
+                  Stream.runForEach((delta) => Queue.offer(liveBuffer, delta)),
+                ),
+                { startImmediately: true },
+              );
+
+              yield* board.ensureThreadFrames(input.projectId);
+              const initial =
+                input.afterSequence === undefined
+                  ? [
+                      {
+                        kind: "snapshot" as const,
+                        snapshot: yield* board.getSnapshot(input.projectId),
+                      },
+                    ]
+                  : yield* board.replay(input.projectId, input.afterSequence);
+              const baseline =
+                input.afterSequence === undefined
+                  ? initial[0]?.kind === "snapshot"
+                    ? initial[0].snapshot.sequence
+                    : 0
+                  : input.afterSequence;
+              const synchronized =
+                input.requestCompletionMarker === true ? [{ kind: "synchronized" as const }] : [];
+              return Stream.concat(
+                Stream.fromIterable([...initial, ...synchronized]),
+                Stream.fromQueue(liveBuffer).pipe(
+                  Stream.filter((item) => item.kind === "synchronized" || item.sequence > baseline),
+                ),
+              );
+            }),
+            { "rpc.aggregate": "board", "board.project_id": input.projectId },
+          ),
         [ORCHESTRATION_WS_METHODS.dispatchCommand]: (command) =>
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.dispatchCommand,

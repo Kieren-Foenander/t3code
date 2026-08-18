@@ -1,5 +1,6 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import type {
+  CheckpointRef,
   EnvironmentId,
   ProjectListEntriesResult,
   ProjectReadFileResult,
@@ -37,10 +38,15 @@ export function getProjectFileQueryAtom(
   environmentId: EnvironmentId,
   cwd: string,
   relativePath: string | null,
+  checkpointRef?: CheckpointRef,
 ) {
   return projectEnvironment.readFile({
     environmentId,
-    input: { cwd, relativePath: relativePath ?? EMPTY_PROJECT_FILE_PATH },
+    input: {
+      cwd,
+      relativePath: relativePath ?? EMPTY_PROJECT_FILE_PATH,
+      ...(checkpointRef === undefined ? {} : { checkpointRef }),
+    },
   });
 }
 
@@ -177,9 +183,10 @@ export function useProjectFileQuery(
   cwd: string,
   relativePath: string | null,
   enabled = true,
+  checkpointRef?: CheckpointRef,
 ): ProjectQueryState<ProjectReadFileResult> {
   const atom = enabled
-    ? getProjectFileQueryAtom(environmentId, cwd, relativePath)
+    ? getProjectFileQueryAtom(environmentId, cwd, relativePath, checkpointRef)
     : EMPTY_PROJECT_FILE_QUERY_ATOM;
   const result = useAtomValue(atom);
   const refreshAtom = useAtomRefresh(atom);
@@ -188,7 +195,8 @@ export function useProjectFileQuery(
   const optimisticResult = useAtomValue(
     optimisticFileAtom(environmentId, cwd, relativePath ?? EMPTY_PROJECT_FILE_PATH),
   );
-  const optimisticFile = relativePath === null ? null : optimisticResult;
+  const optimisticFile =
+    relativePath === null || checkpointRef !== undefined ? null : optimisticResult;
 
   return {
     data: optimisticFile?.data ?? data,
