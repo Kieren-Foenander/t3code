@@ -21,6 +21,7 @@ interface BoardThreadFrameCardProps {
   readonly active: boolean;
   readonly dimmed?: boolean;
   readonly artifactCount: number;
+  readonly access?: "read" | "edit";
   readonly onActivate: () => void;
   readonly onDwell: () => void;
   readonly onDwellEnd: () => void;
@@ -45,6 +46,7 @@ export function BoardThreadFrameCard({
   active,
   dimmed = false,
   artifactCount,
+  access,
   onActivate,
   onDwell,
   onDwellEnd,
@@ -101,7 +103,13 @@ export function BoardThreadFrameCard({
   return (
     <article
       className={`absolute flex overflow-hidden rounded-2xl border bg-card shadow-xl shadow-black/8 ${
-        active ? "border-primary ring-2 ring-primary/20" : "border-border/80"
+        active
+          ? "border-primary ring-2 ring-primary/20"
+          : access === "edit"
+            ? "border-emerald-500 ring-2 ring-emerald-500/20"
+            : access === "read"
+              ? "border-sky-500 ring-2 ring-sky-500/20"
+              : "border-border/80"
       }`}
       style={{
         width: object.size.width,
@@ -110,6 +118,7 @@ export function BoardThreadFrameCard({
         opacity: dimmed ? 0.2 : 1,
       }}
       data-board-thread-id={object.threadId}
+      data-board-access={access ?? "inaccessible"}
       aria-label={`Thread: ${thread?.title ?? object.threadId}`}
       aria-current={active ? "true" : undefined}
       tabIndex={0}

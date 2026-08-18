@@ -106,7 +106,7 @@ export function BoardOutline({
           const accessDescription =
             object.kind === "thread-frame" ? "Thread" : object.kind.replaceAll("-", " ");
           return (
-            <div key={object.id}>
+            <div key={object.id} role="none">
               {section !== previousSection ? (
                 <h2 className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   {section}

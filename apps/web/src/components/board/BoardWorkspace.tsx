@@ -419,6 +419,11 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
             return next;
           });
         } else {
+          setLocalPositions((current) => {
+            const next = new Map(current);
+            next.delete(drag.objectId);
+            return next;
+          });
           const target = document
             .elementsFromPoint(event.clientX, event.clientY)
             .find((element) => element instanceof HTMLElement && element.dataset.boardThreadId);
@@ -804,10 +809,11 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
           position,
           shape: "rectangle",
           label,
+          ...(activeThreadId === null ? {} : { originatingThreadId: activeThreadId }),
         },
       });
     },
-    [createDiagramShape, environmentId, projectId],
+    [activeThreadId, createDiagramShape, environmentId, projectId],
   );
 
   const createGroupAt = useCallback(
@@ -822,10 +828,11 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
           position,
           size: { width: 760, height: 620 },
           title: title.trim(),
+          ...(activeThreadId === null ? {} : { originatingThreadId: activeThreadId }),
         },
       });
     },
-    [createGroup, environmentId, projectId],
+    [activeThreadId, createGroup, environmentId, projectId],
   );
 
   const connectSelected = useCallback(async () => {
@@ -913,6 +920,27 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
     defaultReadScope: "own" as const,
     defaultWriteAuthority: "own" as const,
     updatedAt: "1970-01-01T00:00:00.000Z",
+  };
+  const accessForObject = (object: (typeof objects)[number]): "read" | "edit" | undefined => {
+    if (!activeThreadId) return undefined;
+    const explicit = board.snapshot?.grants.find(
+      (grant) =>
+        grant.threadId === activeThreadId &&
+        grant.objectId === object.id &&
+        grant.revokedAt === null,
+    );
+    if (explicit) return explicit.access;
+    if (
+      (object.kind === "thread-frame" && object.threadId === activeThreadId) ||
+      object.originatingThreadId === activeThreadId
+    ) {
+      return "edit";
+    }
+    if (wholeBoardGrant?.access === "edit") return "edit";
+    if (wholeBoardGrant?.access === "read") return "read";
+    if (projectAuthority.defaultWriteAuthority === "board") return "edit";
+    if (projectAuthority.defaultReadScope === "board") return "read";
+    return undefined;
   };
   const toggleProjectDefault = (kind: "read" | "write") => {
     void setProjectAuthority({
@@ -1391,10 +1419,17 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
             )
               return null;
             const position = localPositions.get(object.id) ?? object.position;
+            const access = accessForObject(object);
             return (
               <section
                 key={object.id}
-                className="absolute rounded-2xl border-2 border-dashed border-border/70 bg-muted/15 p-3"
+                className={`absolute rounded-2xl border-2 border-dashed bg-muted/15 p-3 ${
+                  access === "edit"
+                    ? "border-emerald-500/70"
+                    : access === "read"
+                      ? "border-sky-500/70"
+                      : "border-border/70"
+                }`}
                 style={{
                   width: object.size.width,
                   height: object.size.height,
@@ -1402,7 +1437,11 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
                   opacity: searchResultIds && !searchResultIds.has(object.id) ? 0.2 : 1,
                 }}
                 aria-label={`Group: ${object.title}`}
-                onClick={() => setSelectedObjectId(object.id)}
+                data-board-access={access ?? "inaccessible"}
+                onClick={() => {
+                  setSelectedRelationshipId(null);
+                  setSelectedObjectId(object.id);
+                }}
                 onPointerDown={(event) => {
                   if (event.button !== 0 || event.target !== event.currentTarget) return;
                   event.stopPropagation();
@@ -1518,6 +1557,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
             )
               return null;
             const position = localPositions.get(object.id) ?? object.position;
+            const access = accessForObject(object);
             return (
               <button
                 key={object.id}
@@ -1525,7 +1565,11 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
                 className={`absolute flex items-center justify-center border-2 bg-card px-4 text-sm shadow-md ${
                   selectedObjectId === object.id
                     ? "border-primary ring-2 ring-primary/20"
-                    : "border-border"
+                    : access === "edit"
+                      ? "border-emerald-500"
+                      : access === "read"
+                        ? "border-sky-500"
+                        : "border-border"
                 } ${
                   object.shape === "ellipse"
                     ? "rounded-full"
@@ -1545,6 +1589,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
                   setSelectedRelationshipId(null);
                   setSelectedObjectId(object.id);
                 }}
+                data-board-access={access ?? "inaccessible"}
                 onPointerDown={(event) => {
                   if (event.button !== 0) return;
                   event.stopPropagation();
@@ -1569,6 +1614,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
             if (!boardObjectIntersectsViewport(object, camera, viewportSize)) return null;
             const thread = threadsById.get(object.threadId);
             const position = localPositions.get(object.id) ?? object.position;
+            const access = accessForObject(object);
             return (
               <BoardThreadFrameCard
                 key={object.id}
@@ -1587,8 +1633,10 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
                       candidate.tombstonedAt === null,
                   ).length
                 }
+                {...(access === undefined ? {} : { access })}
                 onActivate={() => {
                   activateThread(object.threadId);
+                  setSelectedRelationshipId(null);
                   setSelectedObjectId(object.id);
                 }}
                 onDwell={() => {
@@ -1625,14 +1673,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
             if (object.tombstonedAt !== null && !showDeleted) return null;
             if (!boardObjectIntersectsViewport(object, camera, viewportSize)) return null;
             const position = localPositions.get(object.id) ?? object.position;
-            const access = activeThreadId
-              ? board.snapshot?.grants.find(
-                  (grant) =>
-                    grant.threadId === activeThreadId &&
-                    grant.objectId === object.id &&
-                    grant.revokedAt === null,
-                )?.access
-              : undefined;
+            const access = accessForObject(object);
             return (
               <BoardNoteCard
                 key={object.id}
@@ -1641,7 +1682,10 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
                 position={position}
                 {...(access === undefined ? {} : { access })}
                 dimmed={Boolean(searchResultIds && !searchResultIds.has(object.id))}
-                onSelect={() => setSelectedObjectId(object.id)}
+                onSelect={() => {
+                  setSelectedRelationshipId(null);
+                  setSelectedObjectId(object.id);
+                }}
                 onDragStart={(event) => {
                   if (event.button !== 0 || object.tombstonedAt !== null) return;
                   event.stopPropagation();
@@ -1662,14 +1706,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
                 if (object.kind !== "file-reference" || object.tombstonedAt !== null) return null;
                 if (!boardObjectIntersectsViewport(object, camera, viewportSize)) return null;
                 const position = localPositions.get(object.id) ?? object.position;
-                const access = activeThreadId
-                  ? board.snapshot?.grants.find(
-                      (grant) =>
-                        grant.threadId === activeThreadId &&
-                        grant.objectId === object.id &&
-                        grant.revokedAt === null,
-                    )?.access
-                  : undefined;
+                const access = accessForObject(object);
                 return (
                   <BoardFileReferenceCard
                     key={object.id}
@@ -1679,7 +1716,10 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
                     position={position}
                     {...(access === undefined ? {} : { access })}
                     dimmed={Boolean(searchResultIds && !searchResultIds.has(object.id))}
-                    onSelect={() => setSelectedObjectId(object.id)}
+                    onSelect={() => {
+                      setSelectedRelationshipId(null);
+                      setSelectedObjectId(object.id);
+                    }}
                     onDragStart={(event) => {
                       if (event.button !== 0) return;
                       event.stopPropagation();
