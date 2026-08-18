@@ -78,4 +78,29 @@ describe("board viewport", () => {
       boardObjectIntersectsViewport(object, { x: 0, y: 0, zoom: 1 }, { width: 1000, height: 800 }),
     ).toBe(false);
   });
+
+  it("retains only nearby cards from a hundreds-object board", () => {
+    const now = "2026-08-17T00:00:00.000Z";
+    const objects = Array.from({ length: 400 }, (_, index) => ({
+      id: BoardObjectId.make(`thread:thread-${index}`),
+      projectId: ProjectId.make("project-1"),
+      kind: "thread-frame" as const,
+      threadId: ThreadId.make(`thread-${index}`),
+      position: { x: (index % 20) * 600, y: Math.floor(index / 20) * 700 },
+      size: { width: 440, height: 560 },
+      frameSize: "standard" as const,
+      revision: 1,
+      createdAt: now,
+      updatedAt: now,
+      tombstonedAt: null,
+    }));
+    const mounted = objects.filter((object) =>
+      boardObjectIntersectsViewport(
+        object,
+        { x: 0, y: 0, zoom: 0.5 },
+        { width: 1440, height: 900 },
+      ),
+    );
+    expect(mounted.length).toBeLessThan(30);
+  });
 });

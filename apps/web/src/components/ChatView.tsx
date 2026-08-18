@@ -6244,7 +6244,7 @@ function ChatViewContent(props: ChatViewProps) {
               }
             >
               <ArrowLeftIcon />
-              <span className="hidden sm:inline">Board</span>
+              <span className="hidden sm:inline">Detach to board</span>
             </Button>
           ) : null}
           <ChatHeader

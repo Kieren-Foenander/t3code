@@ -33,6 +33,18 @@ export function BoardFileReferenceCard({
     true,
     object.checkpointRef,
   );
+  const currentFile = useProjectFileQuery(
+    environmentId,
+    workspaceRoot,
+    object.path,
+    object.checkpointRef !== undefined,
+  );
+  const pinnedChanged = Boolean(
+    object.checkpointRef &&
+    file.data &&
+    currentFile.data &&
+    file.data.contents !== currentFile.data.contents,
+  );
   const lines = file.data?.contents.split("\n") ?? [];
   const start = Math.max(0, (object.startLine ?? 1) - 1);
   const end = object.endLine ?? lines.length;
@@ -65,14 +77,17 @@ export function BoardFileReferenceCard({
         <span className="min-w-0 flex-1 truncate font-mono text-xs">{object.path}</span>
         {object.checkpointRef ? (
           <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            Pinned
+            {pinnedChanged ? "Pinned · source changed" : "Pinned"}
           </span>
         ) : null}
         <Button
           size="icon-xs"
           variant="ghost"
           aria-label="Refresh file reference"
-          onClick={file.refresh}
+          onClick={() => {
+            file.refresh();
+            if (object.checkpointRef) currentFile.refresh();
+          }}
           onPointerDown={(event) => event.stopPropagation()}
         >
           <RefreshCwIcon />
@@ -92,7 +107,11 @@ export function BoardFileReferenceCard({
         </pre>
       )}
       <footer className="border-t border-border/70 px-3 py-1.5 text-[10px] text-muted-foreground">
-        {object.checkpointRef ? "Checkpoint snapshot" : "Live file"}
+        {object.checkpointRef
+          ? pinnedChanged
+            ? "Checkpoint snapshot · current source differs"
+            : "Checkpoint snapshot · matches current source"
+          : "Live file"}
         {object.startLine === undefined
           ? null
           : ` · Lines ${object.startLine}–${object.endLine ?? "end"}`}

@@ -31,6 +31,18 @@ function objectLabel(
   }
 }
 
+function objectSection(
+  object: BoardObject,
+  threadsById: ReadonlyMap<ThreadId, EnvironmentThreadShell>,
+): string {
+  if (object.tombstonedAt !== null) return "Deleted";
+  if (object.kind === "group") return "Groups";
+  if (object.kind === "thread-frame") {
+    return threadsById.get(object.threadId)?.archivedAt ? "Archived threads" : "Active threads";
+  }
+  return "Artifacts";
+}
+
 export function BoardOutline({
   objects,
   threadsById,
@@ -51,9 +63,16 @@ export function BoardOutline({
           object.kind.includes(needle),
       )
       .toSorted((left, right) => {
-        const kindOrder = ["group", "thread-frame", "text-note", "file-reference", "diagram-shape"];
+        const sectionOrder = [
+          "Groups",
+          "Active threads",
+          "Archived threads",
+          "Artifacts",
+          "Deleted",
+        ];
         return (
-          kindOrder.indexOf(left.kind) - kindOrder.indexOf(right.kind) ||
+          sectionOrder.indexOf(objectSection(left, threadsById)) -
+            sectionOrder.indexOf(objectSection(right, threadsById)) ||
           objectLabel(left, threadsById).localeCompare(objectLabel(right, threadsById))
         );
       });
@@ -79,46 +98,56 @@ export function BoardOutline({
         />
       </label>
       <div className="min-h-0 flex-1 overflow-y-auto p-2" role="tree" aria-label="Board objects">
-        {visible.map((object) => {
+        {visible.map((object, index) => {
           const label = objectLabel(object, threadsById);
+          const section = objectSection(object, threadsById);
+          const previousSection =
+            index === 0 ? null : objectSection(visible[index - 1]!, threadsById);
           const accessDescription =
             object.kind === "thread-frame" ? "Thread" : object.kind.replaceAll("-", " ");
           return (
-            <button
-              key={object.id}
-              type="button"
-              role="treeitem"
-              aria-selected={selectedObjectId === object.id}
-              aria-label={`${accessDescription}: ${label}`}
-              className={`mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm focus-visible:outline-2 focus-visible:outline-primary ${
-                selectedObjectId === object.id
-                  ? "bg-primary/10 text-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-              onClick={() => onSelect(object)}
-            >
-              <span className="w-16 shrink-0 truncate text-[10px] uppercase tracking-wide opacity-70">
-                {object.kind === "thread-frame" ? "thread" : object.kind}
-              </span>
-              <span className="min-w-0 flex-1 truncate">{label}</span>
-              {object.kind === "thread-frame" ? (
-                <span className="text-[10px] text-muted-foreground">
-                  {threadsById.get(object.threadId)?.archivedAt
-                    ? "Archived"
-                    : threadsById.get(object.threadId)?.session?.status === "running"
-                      ? "Running"
-                      : threadsById.get(object.threadId)?.hasPendingApprovals ||
-                          threadsById.get(object.threadId)?.hasPendingUserInput
-                        ? "Waiting"
-                        : threadsById.get(object.threadId)?.settledAt
-                          ? "Complete"
-                          : "Ready"}
+            <div key={object.id}>
+              {section !== previousSection ? (
+                <h2 className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {section}
+                </h2>
+              ) : null}
+              <button
+                key={object.id}
+                type="button"
+                role="treeitem"
+                aria-selected={selectedObjectId === object.id}
+                aria-label={`${accessDescription}: ${label}`}
+                className={`mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm focus-visible:outline-2 focus-visible:outline-primary ${
+                  selectedObjectId === object.id
+                    ? "bg-primary/10 text-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+                onClick={() => onSelect(object)}
+              >
+                <span className="w-16 shrink-0 truncate text-[10px] uppercase tracking-wide opacity-70">
+                  {object.kind === "thread-frame" ? "thread" : object.kind}
                 </span>
-              ) : null}
-              {object.tombstonedAt !== null ? (
-                <span className="text-[10px] uppercase text-muted-foreground">Deleted</span>
-              ) : null}
-            </button>
+                <span className="min-w-0 flex-1 truncate">{label}</span>
+                {object.kind === "thread-frame" ? (
+                  <span className="text-[10px] text-muted-foreground">
+                    {threadsById.get(object.threadId)?.archivedAt
+                      ? "Archived"
+                      : threadsById.get(object.threadId)?.session?.status === "running"
+                        ? "Running"
+                        : threadsById.get(object.threadId)?.hasPendingApprovals ||
+                            threadsById.get(object.threadId)?.hasPendingUserInput
+                          ? "Waiting"
+                          : threadsById.get(object.threadId)?.settledAt
+                            ? "Complete"
+                            : "Ready"}
+                  </span>
+                ) : null}
+                {object.tombstonedAt !== null ? (
+                  <span className="text-[10px] uppercase text-muted-foreground">Deleted</span>
+                ) : null}
+              </button>
+            </div>
           );
         })}
       </div>

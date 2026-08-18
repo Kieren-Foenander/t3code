@@ -134,6 +134,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
   const [draftPositions, setDraftPositions] = useState<ReadonlyMap<ThreadId, BoardPoint>>(
     new Map(),
   );
+  const [draftParents, setDraftParents] = useState<ReadonlyMap<ThreadId, ThreadId>>(new Map());
   const draftThreadsById = useComposerDraftStore((store) => store.draftThreadsByThreadKey);
   const dragRef = useRef<DragState | null>(null);
   const panRef = useRef<{
@@ -173,6 +174,8 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
   const [connectorSourceId, setConnectorSourceId] = useState<BoardObjectId | null>(null);
   const [followThreadId, setFollowThreadId] = useState<ThreadId | null>(null);
   const cameraBeforeFollowRef = useRef<BoardCameraState | null>(null);
+  const previousRevisionsRef = useRef(new Map<BoardObjectId, number>());
+  const [changedObjectIds, setChangedObjectIds] = useState<ReadonlySet<BoardObjectId>>(new Set());
 
   useEffect(
     () => () => {
@@ -454,6 +457,20 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
     [activeThreadStorageKey],
   );
   const objects = board.snapshot?.objects ?? [];
+  useEffect(() => {
+    const previous = previousRevisionsRef.current;
+    const changed = objects.flatMap((object) =>
+      object.originatingProviderInstanceId &&
+      previous.has(object.id) &&
+      object.revision > (previous.get(object.id) ?? 0)
+        ? [object.id]
+        : [],
+    );
+    previousRevisionsRef.current = new Map(objects.map((object) => [object.id, object.revision]));
+    if (changed.length > 0) {
+      setChangedObjectIds((current) => new Set([...current, ...changed]));
+    }
+  }, [objects]);
   const objectsById = useMemo(
     () => new Map(objects.map((object) => [object.id, object] as const)),
     [objects],
@@ -470,6 +487,12 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
   const focusObject = useCallback(
     (object: (typeof objects)[number]) => {
       setSelectedObjectId(object.id);
+      setChangedObjectIds((current) => {
+        if (!current.has(object.id)) return current;
+        const next = new Set(current);
+        next.delete(object.id);
+        return next;
+      });
       if (object.kind === "thread-frame") activateThread(object.threadId);
       setCamera((current) => ({
         ...current,
@@ -484,16 +507,27 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
     (object) => object.kind === "thread-frame" && object.threadId === followThreadId,
   );
   const followedThread = followThreadId ? threadsById.get(followThreadId) : undefined;
+  const followedActivity = followThreadId
+    ? board.snapshot?.activities?.find(
+        (activity) => activity.originatingThreadId === followThreadId && activity.undoneAt === null,
+      )
+    : undefined;
   useEffect(() => {
-    if (!followedObject || followThreadId === null) return;
-    focusObject(followedObject);
+    if (followThreadId === null) return;
+    const changedObject = followedActivity?.objectIds
+      .map((objectId) => objectsById.get(objectId))
+      .find((object) => object !== undefined);
+    if (changedObject) focusObject(changedObject);
+    else if (followedObject) focusObject(followedObject);
   }, [
     focusObject,
+    followedActivity?.operationId,
     followedObject,
     followedThread?.session?.activeTurnId,
     followedThread?.session?.status,
     followedThread?.updatedAt,
     followThreadId,
+    objectsById,
   ]);
 
   const toggleFollowActive = useCallback(() => {
@@ -532,6 +566,26 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
       },
     ];
   });
+  const offscreenArtifactChanges = objects.flatMap((object) => {
+    if (
+      object.kind === "thread-frame" ||
+      !changedObjectIds.has(object.id) ||
+      boardObjectIntersectsViewport(object, camera, viewportSize)
+    ) {
+      return [];
+    }
+    const center = {
+      x: camera.x + (object.position.x + object.size.width / 2) * camera.zoom,
+      y: camera.y + 56 + (object.position.y + object.size.height / 2) * camera.zoom,
+    };
+    return [
+      {
+        object,
+        left: Math.max(18, Math.min(viewportSize.width - 150, center.x)),
+        top: Math.max(70, Math.min(viewportSize.height - 42, center.y)),
+      },
+    ];
+  });
 
   useEffect(() => {
     const editable = (target: EventTarget | null) =>
@@ -548,6 +602,41 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
       if (event.key === "-") {
         event.preventDefault();
         setZoom(camera.zoom / 1.15);
+        return;
+      }
+      if (event.key.toLowerCase() === "s" && selectedObjectId && activeThreadId) {
+        event.preventDefault();
+        void setGrant({
+          environmentId,
+          input: {
+            projectId,
+            threadId: activeThreadId,
+            objectIds: [selectedObjectId],
+            access: event.shiftKey ? "edit" : "read",
+          },
+        });
+        return;
+      }
+      if (event.key.toLowerCase() === "d" && selectedObjectId && activeThreadId) {
+        const grant = board.snapshot?.grants.find(
+          (candidate) =>
+            candidate.threadId === activeThreadId &&
+            candidate.objectId === selectedObjectId &&
+            candidate.revokedAt === null,
+        );
+        if (grant) {
+          event.preventDefault();
+          void setGrant({
+            environmentId,
+            input: {
+              projectId,
+              threadId: activeThreadId,
+              objectIds: [selectedObjectId],
+              access: grant.access,
+              revoked: true,
+            },
+          });
+        }
         return;
       }
       const ordered = objects
@@ -601,6 +690,8 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
     camera.zoom,
+    activeThreadId,
+    board.snapshot?.grants,
     environmentId,
     focusObject,
     moveObject,
@@ -608,6 +699,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
     objects,
     projectId,
     selectedObjectId,
+    setGrant,
     setZoom,
   ]);
   const frameAll = useCallback(() => {
@@ -640,9 +732,12 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
       });
       if (!created) return;
       setDraftPositions((current) => new Map(current).set(created.threadId, position));
+      if (activeThreadId) {
+        setDraftParents((current) => new Map(current).set(created.threadId, activeThreadId));
+      }
       activateThread(created.threadId);
     },
-    [activateThread, environmentId, handleNewThread, projectId],
+    [activateThread, activeThreadId, environmentId, handleNewThread, projectId],
   );
 
   const createNoteAt = useCallback(
@@ -1225,6 +1320,18 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
             </button>
           );
         })}
+        {offscreenArtifactChanges.map(({ object, left, top }) => (
+          <button
+            key={`changed:${object.id}`}
+            type="button"
+            className="pointer-events-auto absolute max-w-36 -translate-x-1/2 -translate-y-1/2 truncate rounded-full border border-amber-500/50 bg-background/95 px-3 py-1.5 text-xs font-medium text-foreground shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            style={{ left, top }}
+            aria-label={`Focus changed ${object.kind}`}
+            onClick={() => focusObject(object)}
+          >
+            Agent changed {object.kind.replaceAll("-", " ")}
+          </button>
+        ))}
       </div>
 
       <div
@@ -1364,6 +1471,17 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
               );
             })}
           </svg>
+          <ul className="sr-only" aria-label="Board relationships">
+            {(board.snapshot?.relationships ?? [])
+              .filter((relationship) => relationship.tombstonedAt === null)
+              .map((relationship) => (
+                <li key={`accessible:${relationship.id}`}>
+                  {relationship.kind.replaceAll("-", " ")}: {relationship.sourceObjectId} to{" "}
+                  {relationship.targetObjectId}
+                  {relationship.label ? `, ${relationship.label}` : ""}
+                </li>
+              ))}
+          </ul>
           {objects.map((object) => {
             if (
               object.kind !== "diagram-shape" ||
@@ -1564,7 +1682,14 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
                     onCreated={async () => {
                       await placeThreadFrame({
                         environmentId,
-                        input: { projectId, threadId: draft.threadId, position },
+                        input: {
+                          projectId,
+                          threadId: draft.threadId,
+                          position,
+                          ...(draftParents.get(draft.threadId)
+                            ? { parentThreadId: draftParents.get(draft.threadId)! }
+                            : {}),
+                        },
                       });
                     }}
                   />

@@ -57,6 +57,7 @@ export function BoardThreadFrameCard({
       renderedWidth: object.size.width * zoom,
     }),
   );
+  const archived = Boolean(thread?.archivedAt);
 
   useEffect(() => {
     setLevel((previous) =>
@@ -83,7 +84,7 @@ export function BoardThreadFrameCard({
       }`}
       style={{
         width: object.size.width,
-        height: object.size.height,
+        height: archived ? 84 : object.size.height,
         transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
         opacity: dimmed ? 0.2 : 1,
       }}
@@ -105,11 +106,13 @@ export function BoardThreadFrameCard({
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{thread?.title ?? "Untitled thread"}</p>
             <p className="truncate text-xs text-muted-foreground">
-              {thread?.session?.status === "running"
-                ? "Running"
-                : thread?.settledAt
-                  ? "Complete"
-                  : "Waiting"}
+              {archived
+                ? "Archived"
+                : thread?.session?.status === "running"
+                  ? "Running"
+                  : thread?.settledAt
+                    ? "Complete"
+                    : "Waiting"}
             </p>
             {!active && thread?.updatedAt ? (
               <span className="text-[10px] font-medium text-primary">Updated</span>
@@ -123,16 +126,21 @@ export function BoardThreadFrameCard({
                 onClick={onActivate}
               />
             }
-            size="icon-xs"
+            size={level === "status" ? "icon-xs" : "sm"}
             variant="ghost"
             aria-label={`Focus ${thread?.title ?? "thread"}`}
             onPointerDown={(event) => event.stopPropagation()}
           >
             <FocusIcon />
+            {level === "status" ? null : <span>Attach thread</span>}
           </Button>
         </div>
 
-        {level === "status" ? (
+        {archived ? (
+          <div className="flex flex-1 items-center px-3 text-xs text-muted-foreground">
+            Compact on the board; restore from the sidebar to resume.
+          </div>
+        ) : level === "status" ? (
           <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
             {thread?.session?.status === "running" ? (
               <span className="inline-flex items-center gap-2">
