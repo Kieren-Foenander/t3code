@@ -217,7 +217,22 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
       if (event.code === "Space" && !editable(event.target)) spacePressedRef.current = true;
       if (event.key === "Home" && !editable(event.target)) {
         const bounds = canvasRef.current?.getBoundingClientRect();
-        if (bounds) setCamera(fitBoardCamera(board.snapshot?.objects ?? [], bounds));
+        if (bounds) {
+          const activeThreadIds = new Set(
+            threads
+              .filter(
+                (thread) =>
+                  thread.environmentId === environmentId &&
+                  thread.projectId === projectId &&
+                  !thread.archivedAt,
+              )
+              .map((thread) => thread.id),
+          );
+          const activeFrames = (board.snapshot?.objects ?? []).filter(
+            (object) => object.kind === "thread-frame" && activeThreadIds.has(object.threadId),
+          );
+          setCamera(fitBoardCamera(activeFrames, bounds));
+        }
       }
     };
     const onKeyUp = (event: KeyboardEvent) => {
@@ -229,7 +244,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [activeThreadStorageKey, board.snapshot?.objects]);
+  }, [board.snapshot?.objects, environmentId, projectId, threads]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -716,8 +731,15 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
   ]);
   const frameAll = useCallback(() => {
     const bounds = canvasRef.current?.getBoundingClientRect();
-    if (bounds) setCamera(fitBoardCamera(objects, bounds));
-  }, [objects]);
+    if (!bounds) return;
+    const activeFrames = objects.filter(
+      (object) =>
+        object.kind === "thread-frame" &&
+        !threadsById.get(object.threadId)?.archivedAt &&
+        object.tombstonedAt === null,
+    );
+    setCamera(fitBoardCamera(activeFrames, bounds));
+  }, [objects, threadsById]);
 
   const viewportCenter = useCallback((): BoardPoint => {
     const bounds = canvasRef.current?.getBoundingClientRect();
