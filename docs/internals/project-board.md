@@ -60,8 +60,10 @@ and opens the canonical thread route for detailed work.
 
 ## Performance and connection budgets
 
-The board has its own project-scoped snapshot/delta subscription and never inflates shell or thread
-detail snapshots. Focused tests hold a representative 500-object JSON snapshot below 512 KiB and a
+The board has its own project-scoped snapshot/delta subscription and never adds board objects to
+shell or thread detail snapshots. Shell rows expose at most three paths from the latest checkpoint
+plus the total changed-file count for semantic summaries; full checkpoint lists remain in thread
+detail. Focused tests hold a representative 500-object JSON snapshot below 512 KiB and a
 single-object delta below 2 KiB. Viewport culling mounts fewer than 30 cards from the representative
 400-frame layout; only close thread cards call the detail selector and mount a timeline.
 

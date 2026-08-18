@@ -89,6 +89,21 @@ export function renderBoardProviderContext(input: {
   const lazyObjectIds = objects.flatMap((object) =>
     object.kind !== "text-note" || object.text.length > BOARD_DIRECT_TEXT_LIMIT ? [object.id] : [],
   );
+  const relationships = input.snapshot.relationships
+    .filter(
+      (relationship) =>
+        relationship.tombstonedAt === null &&
+        explicitlySharedIds.has(relationship.sourceObjectId) &&
+        explicitlySharedIds.has(relationship.targetObjectId),
+    )
+    .map((relationship) => ({
+      id: relationship.id,
+      kind: relationship.kind,
+      ...(relationship.label === undefined ? {} : { label: relationship.label }),
+      sourceObjectId: relationship.sourceObjectId,
+      targetObjectId: relationship.targetObjectId,
+      revision: relationship.revision,
+    }));
   const tileGroups = new Map<string, BoardObject[]>();
   for (const object of objects) {
     const tileX = Math.floor(object.position.x / BOARD_CONTEXT_TILE_WIDTH);
@@ -112,6 +127,7 @@ export function renderBoardProviderContext(input: {
   return {
     mode: input.supportsImages ? ("image-plus-structure" as const) : ("structure-only" as const),
     manifest,
+    relationships,
     directText,
     lazyObjectIds,
     tiles,

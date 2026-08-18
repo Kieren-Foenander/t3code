@@ -66,6 +66,16 @@ export const BoardManifestTool = readonlyBoardTool(
           label: Schema.String,
         }),
       ),
+      relationships: Schema.Array(
+        Schema.Struct({
+          id: BoardRelationshipId,
+          kind: Schema.String,
+          label: Schema.optional(Schema.String),
+          sourceObjectId: BoardObjectId,
+          targetObjectId: BoardObjectId,
+          revision: NonNegativeInt,
+        }),
+      ),
     }),
     failure: BoardOperationError,
     dependencies,
@@ -88,6 +98,16 @@ export const BoardContextTool = readonlyBoardTool(
           access: Schema.Literals(["read", "edit"]),
           position: BoardPoint,
           size: Schema.Struct({ width: Schema.Number, height: Schema.Number }),
+        }),
+      ),
+      relationships: Schema.Array(
+        Schema.Struct({
+          id: BoardRelationshipId,
+          kind: Schema.String,
+          label: Schema.optional(Schema.String),
+          sourceObjectId: BoardObjectId,
+          targetObjectId: BoardObjectId,
+          revision: NonNegativeInt,
         }),
       ),
       directText: Schema.Array(

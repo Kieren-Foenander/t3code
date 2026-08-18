@@ -107,6 +107,14 @@ const handlers = {
                   ? object.path
                   : object.label,
         })),
+        relationships: snapshot.relationships.map((relationship) => ({
+          id: relationship.id,
+          kind: relationship.kind,
+          ...(relationship.label === undefined ? {} : { label: relationship.label }),
+          sourceObjectId: relationship.sourceObjectId,
+          targetObjectId: relationship.targetObjectId,
+          revision: relationship.revision,
+        })),
       }),
     ),
   board_context: () =>

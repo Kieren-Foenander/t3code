@@ -1,4 +1,4 @@
-import { BoardObjectId, ProjectId, ThreadId } from "@t3tools/contracts";
+import { BoardObjectId, BoardRelationshipId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -114,5 +114,73 @@ describe("board provider context", () => {
     expect(result.mode).toBe("image-plus-structure");
     expect(result.tiles.map((tile) => tile.id)).toEqual(["tile:0:0", "tile:1:0"]);
     expect(result.tiles[0]?.imageDataUrl).toContain("data:image/svg+xml");
+  });
+
+  it("preserves graph structure only when both endpoints are explicitly shared", () => {
+    const leftId = BoardObjectId.make("note:left");
+    const rightId = BoardObjectId.make("note:right");
+    const privateId = BoardObjectId.make("note:private");
+    const objects = [leftId, rightId, privateId].map((id, index) => ({
+      id,
+      projectId,
+      kind: "text-note" as const,
+      position: { x: index * 400, y: 0 },
+      size: { width: 320, height: 240 },
+      title: id,
+      text: "small",
+      revision: 1,
+      createdAt: now,
+      updatedAt: now,
+      tombstonedAt: null,
+    }));
+    const result = renderBoardProviderContext({
+      threadId,
+      supportsImages: false,
+      snapshot: {
+        projectId,
+        sequence: 1,
+        objects,
+        relationships: [
+          {
+            id: BoardRelationshipId.make("relationship:shared"),
+            projectId,
+            kind: "blocked-by",
+            sourceObjectId: leftId,
+            targetObjectId: rightId,
+            revision: 1,
+            createdAt: now,
+            updatedAt: now,
+            tombstonedAt: null,
+          },
+          {
+            id: BoardRelationshipId.make("relationship:private"),
+            projectId,
+            kind: "connector",
+            sourceObjectId: rightId,
+            targetObjectId: privateId,
+            revision: 1,
+            createdAt: now,
+            updatedAt: now,
+            tombstonedAt: null,
+          },
+        ],
+        grants: [leftId, rightId].map((objectId) => ({
+          projectId,
+          threadId,
+          objectId,
+          access: "read" as const,
+          createdAt: now,
+          revokedAt: null,
+        })),
+      },
+    });
+
+    expect(result.relationships).toEqual([
+      expect.objectContaining({
+        id: BoardRelationshipId.make("relationship:shared"),
+        sourceObjectId: leftId,
+        targetObjectId: rightId,
+      }),
+    ]);
   });
 });

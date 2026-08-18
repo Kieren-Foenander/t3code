@@ -461,6 +461,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           backgroundLiveness: null,
           planProgress: null,
           latestChangedFiles: ["README.md"],
+          latestChangedFileCount: 1,
         },
       ]);
 

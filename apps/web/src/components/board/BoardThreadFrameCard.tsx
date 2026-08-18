@@ -77,6 +77,8 @@ export function BoardThreadFrameCard({
     }
   }, [active, thread?.updatedAt, viewedStorageKey]);
   const unread = Boolean(!active && thread?.updatedAt && thread.updatedAt > viewedAt);
+  const changedFiles = thread?.latestChangedFiles ?? [];
+  const changedFileCount = thread?.latestChangedFileCount ?? changedFiles.length;
 
   useEffect(() => {
     setLevel((previous) =>
@@ -190,11 +192,11 @@ export function BoardThreadFrameCard({
               <p className="text-xs font-medium text-amber-600">Blocked on user input</p>
             ) : null}
             {thread?.branch ? <p className="truncate font-mono text-xs">{thread.branch}</p> : null}
-            {(thread?.latestChangedFiles?.length ?? 0) > 0 ? (
+            {changedFiles.length > 0 ? (
               <p className="truncate text-xs">
-                {thread?.latestChangedFiles?.length === 1
-                  ? thread.latestChangedFiles[0]
-                  : `${thread?.latestChangedFiles?.[0]} +${(thread?.latestChangedFiles?.length ?? 1) - 1} more`}
+                {changedFileCount === 1
+                  ? changedFiles[0]
+                  : `${changedFiles[0]} +${changedFileCount - 1} more`}
               </p>
             ) : null}
             <p className="text-xs">

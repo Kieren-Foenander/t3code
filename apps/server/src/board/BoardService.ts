@@ -719,11 +719,14 @@ export const layer = Layer.effect(
                   : [],
               ),
             ]);
-            const hasExplicitFullBoardEdit = accessible.grants.some(
-              (grant) => grant.objectId === BOARD_WHOLE_BOARD_OBJECT_ID && grant.access === "edit",
-            );
+            const hasFullBoardEdit =
+              accessible.authority?.defaultWriteAuthority === "board" ||
+              accessible.grants.some(
+                (grant) =>
+                  grant.objectId === BOARD_WHOLE_BOARD_OBJECT_ID && grant.access === "edit",
+              );
             const authorized = (() => {
-              if (command.type === "board.operation.undo") return hasExplicitFullBoardEdit;
+              if (command.type === "board.operation.undo") return hasFullBoardEdit;
               if (command.type === "board.batch") {
                 for (const operation of command.operations) {
                   if (operation.type === "note.create" || operation.type === "shape.create") {

@@ -211,21 +211,26 @@ function maxIso(left: string | null, right: string): string {
 
 function latestChangedFilesByThread(
   rows: ReadonlyArray<typeof ProjectionCheckpointDbRowSchema.Type>,
-): ReadonlyMap<string, ReadonlyArray<string>> {
+): ReadonlyMap<string, { readonly paths: ReadonlyArray<string>; readonly totalCount: number }> {
   const latest = new Map<
     string,
-    { readonly checkpointTurnCount: number; readonly files: ReadonlyArray<string> }
+    {
+      readonly checkpointTurnCount: number;
+      readonly paths: ReadonlyArray<string>;
+      readonly totalCount: number;
+    }
   >();
   for (const row of rows) {
     const current = latest.get(row.threadId);
     if (!current || row.checkpointTurnCount >= current.checkpointTurnCount) {
       latest.set(row.threadId, {
         checkpointTurnCount: row.checkpointTurnCount,
-        files: row.files.map((file) => file.path),
+        paths: row.files.slice(0, 3).map((file) => file.path),
+        totalCount: row.files.length,
       });
     }
   }
-  return new Map([...latest].map(([threadId, value]) => [threadId, value.files]));
+  return latest;
 }
 
 function escapeLikePattern(value: string): string {
@@ -690,6 +695,32 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         FROM projection_turns
         WHERE checkpoint_turn_count IS NOT NULL
         ORDER BY thread_id ASC, checkpoint_turn_count ASC
+      `,
+  });
+
+  const listLatestCheckpointRows = SqlSchema.findAll({
+    Request: Schema.Void,
+    Result: ProjectionCheckpointDbRowSchema,
+    execute: () =>
+      sql`
+        SELECT
+          turns.thread_id AS "threadId",
+          turns.turn_id AS "turnId",
+          turns.checkpoint_turn_count AS "checkpointTurnCount",
+          turns.checkpoint_ref AS "checkpointRef",
+          turns.checkpoint_status AS "status",
+          turns.checkpoint_files_json AS "files",
+          turns.assistant_message_id AS "assistantMessageId",
+          turns.completed_at AS "completedAt"
+        FROM projection_turns AS turns
+        WHERE turns.checkpoint_turn_count IS NOT NULL
+          AND turns.checkpoint_turn_count = (
+            SELECT MAX(candidate.checkpoint_turn_count)
+            FROM projection_turns AS candidate
+            WHERE candidate.thread_id = turns.thread_id
+              AND candidate.checkpoint_turn_count IS NOT NULL
+          )
+        ORDER BY turns.thread_id ASC
       `,
   });
 
@@ -1512,7 +1543,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               ),
             ),
           ),
-          listCheckpointRows(undefined).pipe(
+          listLatestCheckpointRows(undefined).pipe(
             Effect.mapError(
               toPersistenceSqlOrDecodeError(
                 "ProjectionSnapshotQuery.getSnapshot:listCheckpoints:query",
@@ -2087,7 +2118,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                           row.threadId,
                         ),
                         planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
-                        latestChangedFiles: changedFilesByThread.get(row.threadId) ?? [],
+                        latestChangedFiles: changedFilesByThread.get(row.threadId)?.paths ?? [],
+                        latestChangedFileCount:
+                          changedFilesByThread.get(row.threadId)?.totalCount ?? 0,
                       } satisfies OrchestrationThreadShell)
                     : Result.failVoid,
                 ),
@@ -2147,7 +2180,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               ),
             ),
           ),
-          listCheckpointRows(undefined).pipe(
+          listLatestCheckpointRows(undefined).pipe(
             Effect.mapError(
               toPersistenceSqlOrDecodeError(
                 "ProjectionSnapshotQuery.getArchivedShellSnapshot:listCheckpoints:query",
@@ -2243,7 +2276,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                       row.threadId,
                     ),
                     planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
-                    latestChangedFiles: changedFilesByThread.get(row.threadId) ?? [],
+                    latestChangedFiles: changedFilesByThread.get(row.threadId)?.paths ?? [],
+                    latestChangedFileCount: changedFilesByThread.get(row.threadId)?.totalCount ?? 0,
                   }),
                 ),
                 updatedAt: updatedAt ?? "1970-01-01T00:00:00.000Z",
@@ -2531,7 +2565,12 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           threadRow.value.threadId,
         ),
         planProgress: threadPlanProgress.getThreadPlanProgress(threadRow.value.threadId),
-        latestChangedFiles: checkpointRows.at(-1)?.files.map((file) => file.path) ?? [],
+        latestChangedFiles:
+          checkpointRows
+            .at(-1)
+            ?.files.slice(0, 3)
+            .map((file) => file.path) ?? [],
+        latestChangedFileCount: checkpointRows.at(-1)?.files.length ?? 0,
       } satisfies OrchestrationThreadShell);
     });
 
