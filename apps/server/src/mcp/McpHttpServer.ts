@@ -6,10 +6,12 @@ import * as Option from "effect/Option";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import type * as Types from "effect/Types";
+import * as Crypto from "effect/Crypto";
 import { McpProtocol, McpSchema, McpServer, Tool } from "effect/unstable/ai";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 
 import packageJson from "../../package.json" with { type: "json" };
+import { BoardService } from "../board/BoardService.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./PreviewAutomationBroker.ts";
@@ -22,6 +24,8 @@ import {
   PreviewSnapshotToolkit,
   PreviewStandardToolkit,
 } from "./toolkits/preview/tools.ts";
+import { BoardToolkitHandlersLive } from "./toolkits/board/handlers.ts";
+import { BoardContextTool, BoardStandardToolkit, BoardToolkit } from "./toolkits/board/tools.ts";
 
 const unauthorized = HttpServerResponse.jsonUnsafe(
   {
@@ -216,6 +220,107 @@ export const PreviewToolkitRegistrationLive = Layer.mergeAll(
   PreviewSnapshotRegistrationLive,
 );
 
+const BoardStandardToolkitRegistrationLive = McpServer.toolkit(BoardStandardToolkit).pipe(
+  Layer.provide(BoardToolkitHandlersLive),
+);
+
+export const boardContextCallToolResult = (encodedResult: unknown) => {
+  const result = encodedResult as {
+    readonly tiles: ReadonlyArray<{ readonly imageDataUrl: string }>;
+    readonly [key: string]: unknown;
+  };
+  return new McpSchema.CallToolResult({
+    isError: false,
+    structuredContent: result,
+    content: [
+      { type: "text", text: JSON.stringify(result) },
+      ...result.tiles.map(({ imageDataUrl }) => ({
+        type: "image" as const,
+        data: new Uint8Array(
+          Buffer.from(decodeURIComponent(imageDataUrl.slice(imageDataUrl.indexOf(",") + 1))),
+        ),
+        mimeType: "image/svg+xml",
+      })),
+    ],
+  });
+};
+
+const boardContextFailure = <E>(cause: Cause.Cause<E>) => {
+  if (Cause.hasInterrupts(cause) || cause.reasons.some(Cause.isDieReason)) {
+    return Effect.failCause(cause).pipe(Effect.orDie);
+  }
+  const firstFailure = cause.reasons.find(Cause.isFailReason)?.error;
+  const errorTag =
+    typeof firstFailure === "object" &&
+    firstFailure !== null &&
+    "_tag" in firstFailure &&
+    typeof firstFailure._tag === "string"
+      ? firstFailure._tag
+      : "BoardContextError";
+  return Effect.succeed(
+    new McpSchema.CallToolResult({
+      isError: true,
+      structuredContent: { error: { _tag: errorTag, operation: "context" } },
+      content: [{ type: "text", text: "Board context rendering failed." }],
+    }),
+  );
+};
+
+const registerBoardContext = Effect.fn("McpHttpServer.registerBoardContext")(function* () {
+  const server = yield* McpServer.McpServer;
+  const built = yield* BoardToolkit;
+  const tool = BoardContextTool;
+  yield* server.addTool({
+    tool: new McpSchema.Tool({
+      name: tool.name,
+      description: Tool.getDescription(tool),
+      inputSchema: Tool.getJsonSchema(tool),
+      annotations: {
+        ...Context.getOption(tool.annotations, Tool.Title).pipe(
+          Option.map((title) => ({ title })),
+          Option.getOrUndefined,
+        ),
+        readOnlyHint: Context.get(tool.annotations, Tool.Readonly),
+        destructiveHint: Context.get(tool.annotations, Tool.Destructive),
+        idempotentHint: Context.get(tool.annotations, Tool.Idempotent),
+        openWorldHint: Context.get(tool.annotations, Tool.OpenWorld),
+      },
+    }),
+    annotations: tool.annotations,
+    handle: (payload) =>
+      Effect.withFiber((fiber) => {
+        const invocation = Context.getUnsafe(
+          fiber.context,
+          McpInvocationContext.McpInvocationContext,
+        );
+        const board = Context.getUnsafe(fiber.context, BoardService);
+        const crypto = Context.getUnsafe(fiber.context, Crypto.Crypto);
+        return built.handle("board_context", payload).pipe(
+          Stream.unwrap,
+          Stream.run(Sink.last()),
+          Effect.flatMap(Effect.fromOption),
+          Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
+          Effect.provideService(BoardService, board),
+          Effect.provideService(Crypto.Crypto, crypto),
+          Effect.map(({ encodedResult }) => boardContextCallToolResult(encodedResult)),
+          Effect.matchCauseEffect({
+            onFailure: boardContextFailure,
+            onSuccess: Effect.succeed,
+          }),
+        );
+      }),
+  });
+});
+
+const BoardContextRegistrationLive = Layer.effectDiscard(registerBoardContext()).pipe(
+  Layer.provide(BoardToolkitHandlersLive),
+);
+
+export const BoardToolkitRegistrationLive = Layer.mergeAll(
+  BoardStandardToolkitRegistrationLive,
+  BoardContextRegistrationLive,
+);
+
 const McpTransportLive = McpServer.layerHttp({
   name: "T3 Code",
   version: packageJson.version,
@@ -223,4 +328,7 @@ const McpTransportLive = McpServer.layerHttp({
   protocols: [McpProtocol.v2025_06_18],
 }).pipe(Layer.provide(McpAuthMiddlewareLive));
 
-export const layer = PreviewToolkitRegistrationLive.pipe(Layer.provideMerge(McpTransportLive));
+export const layer = Layer.mergeAll(
+  PreviewToolkitRegistrationLive,
+  BoardToolkitRegistrationLive,
+).pipe(Layer.provideMerge(McpTransportLive));

@@ -1,7 +1,14 @@
 import { expect, it } from "@effect/vitest";
 import { NodeHttpServer } from "@effect/platform-node";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { EnvironmentId, PreviewTabId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import {
+  BoardObjectId,
+  EnvironmentId,
+  PreviewTabId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
@@ -11,6 +18,7 @@ import { HttpBody, HttpClient, HttpRouter, HttpServerResponse } from "effect/uns
 import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as PreviewAutomationBroker from "./PreviewAutomationBroker.ts";
+import * as BoardService from "../board/BoardService.ts";
 
 const environmentId = EnvironmentId.make("environment-mcp-test");
 const threadId = ThreadId.make("thread-mcp-test");
@@ -38,6 +46,64 @@ const TestLayer = McpHttpServer.PreviewToolkitRegistrationLive.pipe(
   Layer.provideMerge(McpServer.McpServer.layer),
   Layer.provideMerge(PreviewAutomationBroker.layer.pipe(Layer.provide(NodeServices.layer))),
 );
+const BoardRegistrationTestLayer = McpHttpServer.BoardToolkitRegistrationLive.pipe(
+  Layer.provideMerge(McpServer.McpServer.layer),
+);
+const boardProjectId = ProjectId.make("project-board-mcp-test");
+const boardObjectId = BoardObjectId.make("note:board-mcp-test");
+const boardInvocation = {
+  ...invocation,
+  capabilities: new Set(["board"] as const),
+  providerKind: "codex",
+};
+const BoardContextTestLayer = BoardRegistrationTestLayer.pipe(
+  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(
+    Layer.succeed(
+      BoardService.BoardService,
+      BoardService.BoardService.of({
+        dispatch: () => Effect.die("unused"),
+        ensureThreadFrames: () => Effect.die("unused"),
+        getSnapshot: () => Effect.die("unused"),
+        getAccessibleSnapshot: () =>
+          Effect.succeed({
+            projectId: boardProjectId,
+            sequence: 1,
+            objects: [
+              {
+                id: boardObjectId,
+                projectId: boardProjectId,
+                kind: "text-note",
+                position: { x: 0, y: 0 },
+                size: { width: 320, height: 240 },
+                title: "Shared note",
+                text: "Visible board context",
+                revision: 1,
+                createdAt: "2026-08-18T00:00:00.000Z",
+                updatedAt: "2026-08-18T00:00:00.000Z",
+                tombstonedAt: null,
+              },
+            ],
+            relationships: [],
+            grants: [
+              {
+                projectId: boardProjectId,
+                threadId,
+                objectId: boardObjectId,
+                access: "read",
+                createdAt: "2026-08-18T00:00:00.000Z",
+                revokedAt: null,
+              },
+            ],
+          }),
+        dispatchAsThread: () => Effect.die("unused"),
+        replay: () => Effect.die("unused"),
+        listActivities: Effect.succeed([]),
+        changes: Stream.empty,
+      }),
+    ),
+  ),
+);
 
 it("normalizes empty successful notification responses to accepted", () => {
   const notificationResponse = McpHttpServer.normalizeMcpHttpResponse(
@@ -50,6 +116,72 @@ it("normalizes empty successful notification responses to accepted", () => {
   );
   expect(resultResponse.status).toBe(200);
 });
+
+it.effect("registers the complete semantic board toolkit with MCP", () =>
+  Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const names = new Set(server.tools.map(({ tool }) => tool.name));
+    expect(names).toEqual(
+      new Set([
+        "board_search",
+        "board_manifest",
+        "board_context",
+        "board_read",
+        "board_create_note",
+        "board_create_shape",
+        "board_update_note",
+        "board_place",
+        "board_update_object",
+        "board_connect",
+        "board_update_relationship",
+        "board_create_group",
+        "board_tombstone",
+        "board_batch",
+        "board_undo",
+      ]),
+    );
+  }).pipe(Effect.provide(BoardRegistrationTestLayer)),
+);
+
+it("emits spatial board tiles as native MCP image content", () => {
+  const result = McpHttpServer.boardContextCallToolResult({
+    mode: "image-plus-structure",
+    manifest: [],
+    relationships: [],
+    directText: [],
+    lazyObjectIds: [],
+    tiles: [
+      {
+        id: "tile:0:0",
+        objectIds: [],
+        imageDataUrl: "data:image/svg+xml;charset=utf-8,%3Csvg%3Ereadable%3C%2Fsvg%3E",
+      },
+    ],
+  });
+  expect(result.content).toHaveLength(2);
+  expect(result.content[1]).toMatchObject({ type: "image", mimeType: "image/svg+xml" });
+  expect(Buffer.from((result.content[1] as { data: Uint8Array }).data).toString()).toBe(
+    "<svg>readable</svg>",
+  );
+});
+
+it.effect("calls board context through MCP with provider-scoped authority", () =>
+  Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const result = yield* server
+      .callTool({ name: "board_context", arguments: {} })
+      .pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, boardInvocation),
+        Effect.provideService(McpSchema.McpServerClient, client),
+      );
+    expect(result.isError).toBe(false);
+    expect(result.structuredContent).toMatchObject({
+      mode: "image-plus-structure",
+      manifest: [{ id: boardObjectId }],
+    });
+    expect(result.content.some((content) => content.type === "image")).toBe(true);
+  }).pipe(Effect.provide(BoardContextTestLayer)),
+);
 
 it.effect("returns bounded structural preview snapshot failures", () =>
   Effect.scoped(

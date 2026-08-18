@@ -39,6 +39,7 @@ import {
   FolderIcon,
   FolderPlusIcon,
   LinkIcon,
+  LayoutDashboardIcon,
   MessageSquareIcon,
   PaletteIcon,
   SettingsIcon,
@@ -1589,6 +1590,23 @@ function OpenCommandPaletteDialog(props: {
     projectGroups[0] ??
     null;
   if (contextualProjectGroup) {
+    actionItems.push({
+      kind: "action",
+      value: "action:project-board",
+      searchTerms: ["project", "board", "canvas", "agents", "workspace"],
+      title: "Open project board",
+      description: contextualProjectGroup.displayName,
+      icon: <LayoutDashboardIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        await navigate({
+          to: "/$environmentId/board/$projectId",
+          params: {
+            environmentId: contextualProjectGroup.environmentId,
+            projectId: contextualProjectGroup.id,
+          },
+        });
+      },
+    });
     actionItems.push({
       kind: "action",
       value: "action:project-settings",

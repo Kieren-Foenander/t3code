@@ -100,6 +100,7 @@ const collectQueueUntil = Effect.fn("TransferBudget.collectQueueUntil")(function
 });
 
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
+import * as BoardService from "./board/BoardService.ts";
 import * as ServerConfig from "./config.ts";
 import { makeRoutesLayer } from "./server.ts";
 import { isThreadDetailEvent, resolveAvailableEditorsForConfig } from "./ws.ts";
@@ -569,6 +570,7 @@ const buildAppUnderTest = (options?: {
       WorkspaceFileSystem.layer.pipe(
         Layer.provide(WorkspacePaths.layer),
         Layer.provide(workspaceEntriesLayer),
+        Layer.provide(vcsDriverRegistryLayer),
       ),
       ProjectFaviconResolver.layer.pipe(
         Layer.provide(WorkspacePaths.layer),
@@ -831,6 +833,7 @@ const buildAppUnderTest = (options?: {
     );
 
     const appLayer = servedRoutesLayer.pipe(
+      Layer.provideMerge(BoardService.layer.pipe(Layer.provide(SqlitePersistenceMemory))),
       Layer.provide(resourceTelemetryLayer),
       Layer.provide(UsageService.layerTest),
       Layer.provide(

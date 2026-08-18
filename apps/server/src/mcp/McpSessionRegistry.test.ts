@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
-import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProviderInstanceId, ThreadId, TurnId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { HttpServer } from "effect/unstable/http";
 
@@ -125,5 +125,24 @@ it.effect("does not keep credentials of other threads alive", () =>
     timestamp += 2;
 
     expect(yield* registry.resolve(token)).toBeUndefined();
+  }),
+);
+
+it.effect("attributes subsequent board calls to the active provider turn", () =>
+  Effect.gen(function* () {
+    const registry = yield* makeRegistry(() => 1_000);
+    const threadId = ThreadId.make("thread-attributed");
+    const issued = yield* registry.issue({
+      threadId,
+      providerInstanceId: ProviderInstanceId.make("cursor-work"),
+      capabilities: new Set(["board"]),
+    });
+    const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
+    yield* registry.setActiveTurn(threadId, TurnId.make("turn-1"), "cursor");
+    expect(yield* registry.resolve(token)).toMatchObject({
+      threadId,
+      activeTurnId: TurnId.make("turn-1"),
+      providerKind: "cursor",
+    });
   }),
 );

@@ -14,6 +14,14 @@ import {
   HostPowerSnapshot,
 } from "./background.ts";
 import {
+  BOARD_WS_METHODS,
+  BoardCommand,
+  BoardDispatchResult,
+  BoardOperationError,
+  BoardStreamItem,
+  BoardSubscribeInput,
+} from "./board.ts";
+import {
   FilesystemBrowseInput,
   FilesystemBrowseResult,
   FilesystemBrowseError,
@@ -877,6 +885,19 @@ export const WsOrchestrationDispatchCommandRpc = Rpc.make(
   },
 );
 
+export const WsBoardDispatchCommandRpc = Rpc.make(BOARD_WS_METHODS.dispatchCommand, {
+  payload: BoardCommand,
+  success: BoardDispatchResult,
+  error: Schema.Union([BoardOperationError, EnvironmentAuthorizationError]),
+});
+
+export const WsBoardSubscribeRpc = Rpc.make(BOARD_WS_METHODS.subscribe, {
+  payload: BoardSubscribeInput,
+  success: BoardStreamItem,
+  error: Schema.Union([BoardOperationError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
 export const WsOrchestrationGetWorkflowScriptRpc = Rpc.make(
   ORCHESTRATION_WS_METHODS.getWorkflowScript,
   {
@@ -1075,6 +1096,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeBackgroundPolicyRpc,
   WsSubscribeResourceTelemetryRpc,
   WsOrchestrationDispatchCommandRpc,
+  WsBoardDispatchCommandRpc,
+  WsBoardSubscribeRpc,
   WsOrchestrationGetWorkflowScriptRpc,
   WsOrchestrationGetTurnDiffRpc,
   WsOrchestrationGetFullThreadDiffRpc,

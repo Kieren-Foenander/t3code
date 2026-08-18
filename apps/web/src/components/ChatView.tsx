@@ -162,6 +162,7 @@ import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings"
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import {
   AlarmClockIcon,
+  ArrowLeftIcon,
   CheckCircle2Icon,
   ChevronDownIcon,
   GitBranchIcon,
@@ -6227,6 +6228,25 @@ function ChatViewContent(props: ChatViewProps) {
           )}
         >
           {!rightPanelOpen ? panelLayoutControls : null}
+          {routeKind === "server" && activeProject ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="no-drag mr-1 shrink-0"
+              onClick={() =>
+                void navigate({
+                  to: "/$environmentId/board/$projectId",
+                  params: {
+                    environmentId: activeThread.environmentId,
+                    projectId: activeProject.id,
+                  },
+                })
+              }
+            >
+              <ArrowLeftIcon />
+              <span className="hidden sm:inline">Detach to board</span>
+            </Button>
+          ) : null}
           <ChatHeader
             {...(!supportsPullRequests || threadRepository === null
               ? {}

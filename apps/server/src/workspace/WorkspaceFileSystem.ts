@@ -24,6 +24,7 @@ import * as Schema from "effect/Schema";
 
 import * as WorkspaceEntries from "./WorkspaceEntries.ts";
 import * as WorkspacePaths from "./WorkspacePaths.ts";
+import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 
 const PROJECT_READ_FILE_MAX_BYTES = 1024 * 1024;
 
@@ -40,6 +41,7 @@ export class WorkspaceFileSystemOperationError extends Schema.TaggedErrorClass<W
       "open",
       "stat",
       "read",
+      "read-checkpoint",
       "close",
       "make-directory",
       "write-file",
@@ -131,6 +133,7 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+  const vcsRegistry = yield* VcsDriverRegistry.VcsDriverRegistry;
 
   const readFile: WorkspaceFileSystem["Service"]["readFile"] = Effect.fn(
     "WorkspaceFileSystem.readFile",
@@ -139,6 +142,47 @@ export const make = Effect.gen(function* () {
       workspaceRoot: input.cwd,
       relativePath: input.relativePath,
     });
+
+    if (input.checkpointRef !== undefined) {
+      const resolvedPath = `${input.checkpointRef}:${target.relativePath}`;
+      const checkpointFailure = (cause: unknown) =>
+        new WorkspaceFileSystemOperationError({
+          workspaceRoot: input.cwd,
+          relativePath: input.relativePath,
+          resolvedPath,
+          operationPath: resolvedPath,
+          operation: "read-checkpoint",
+          cause,
+        });
+      if (!input.checkpointRef.startsWith("refs/t3/checkpoints/")) {
+        return yield* checkpointFailure(new Error("Unsupported checkpoint ref."));
+      }
+      const handle = yield* vcsRegistry
+        .resolve({ cwd: input.cwd })
+        .pipe(Effect.mapError(checkpointFailure));
+      const result = yield* handle.driver
+        .execute({
+          operation: "WorkspaceFileSystem.readCheckpointFile",
+          cwd: input.cwd,
+          args: ["show", "--no-ext-diff", "--format=", resolvedPath],
+          maxOutputBytes: PROJECT_READ_FILE_MAX_BYTES,
+          appendTruncationMarker: false,
+        })
+        .pipe(Effect.mapError(checkpointFailure));
+      if (result.stdoutInvalidUtf8 === true || result.stdout.includes("\0")) {
+        return yield* new WorkspaceBinaryFileError({
+          workspaceRoot: input.cwd,
+          relativePath: input.relativePath,
+          resolvedPath,
+        });
+      }
+      return {
+        relativePath: target.relativePath,
+        contents: result.stdout,
+        byteLength: new TextEncoder().encode(result.stdout).byteLength,
+        truncated: result.stdoutTruncated,
+      };
+    }
 
     const realWorkspaceRoot = yield* Effect.tryPromise({
       try: () => NodeFSP.realpath(input.cwd),

@@ -119,6 +119,7 @@ interface HomeScreenProps {
   readonly onSelectPendingTask: (pendingTask: PendingNewTask) => void;
   readonly onDeletePendingTask: (pendingTask: PendingNewTask) => void;
   readonly onNewThreadInProject: (project: EnvironmentProject) => void;
+  readonly onOpenProjectBoard: (project: EnvironmentProject) => void;
 }
 
 /* ─── Layout constants ───────────────────────────────────────────────── */
@@ -950,6 +951,7 @@ export function HomeScreen(props: HomeScreenProps) {
               // so the quick new-thread button is single-real-project only.
               newThreadTarget={item.group.newThreadTarget}
               onNewThread={props.onNewThreadInProject}
+              onOpenBoard={props.onOpenProjectBoard}
               project={item.group.representative}
               threadCount={item.group.threads.length + item.group.pendingTasks.length}
               title={item.group.title}
@@ -1021,6 +1023,7 @@ export function HomeScreen(props: HomeScreenProps) {
       props.onDeletePendingTask,
       props.onDeleteThread,
       props.onNewThreadInProject,
+      props.onOpenProjectBoard,
       props.onSelectPendingTask,
       props.onSelectThread,
       props.searchQuery,

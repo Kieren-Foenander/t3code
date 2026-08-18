@@ -86,9 +86,10 @@ export const ThreadListGroupHeader = memo(function ThreadListGroupHeader(props: 
   /** Project a quick new thread should target; null hides the button. */
   readonly newThreadTarget?: EnvironmentProject | null;
   readonly onNewThread?: (project: EnvironmentProject) => void;
+  readonly onOpenBoard?: (project: EnvironmentProject) => void;
 }) {
   const iconMutedColor = useThemeColor("--color-icon-muted");
-  const { groupKey, onGroupAction, onNewThread } = props;
+  const { groupKey, onGroupAction, onNewThread, onOpenBoard } = props;
   const newThreadTarget = props.newThreadTarget ?? null;
   const compact = props.variant === "compact";
   const handleToggle = useCallback(
@@ -101,6 +102,7 @@ export const ThreadListGroupHeader = memo(function ThreadListGroupHeader(props: 
     }
   }, [newThreadTarget, onNewThread]);
   const showNewThreadButton = onNewThread !== undefined && newThreadTarget !== null;
+  const showBoardButton = onOpenBoard !== undefined && newThreadTarget !== null;
 
   // The new-thread button is a SIBLING of the collapse toggle, not a child:
   // nested touchables are unreachable to VoiceOver/TalkBack (the parent
@@ -160,6 +162,23 @@ export const ThreadListGroupHeader = memo(function ThreadListGroupHeader(props: 
           {props.threadCount}
         </Text>
       </Pressable>
+      {showBoardButton ? (
+        <Pressable
+          accessibilityLabel={`Open ${props.title} board`}
+          accessibilityRole="button"
+          hitSlop={{ ...verticalHitSlop, left: 10, right: 10 }}
+          onPress={() => newThreadTarget && onOpenBoard?.(newThreadTarget)}
+          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, paddingLeft: 12 })}
+        >
+          <SymbolView
+            name="square.grid.2x2"
+            size={compact ? 19 : 15}
+            tintColor={iconMutedColor}
+            type="monochrome"
+            weight="medium"
+          />
+        </Pressable>
+      ) : null}
       {showNewThreadButton ? (
         <Pressable
           accessibilityLabel={`Create new thread in ${props.title}`}

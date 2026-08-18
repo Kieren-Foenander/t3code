@@ -44,6 +44,7 @@ import {
   FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
+  LayoutDashboardIcon,
   MessageSquareIcon,
   PinIcon,
   PlusIcon,
@@ -3532,6 +3533,33 @@ export default function Sidebar() {
                     </MenuRadioGroup>
                   </MenuPopup>
                 </Menu>
+                {scopedProjectGroup ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <SidebarMenuButton
+                          size="icon"
+                          className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                          type="button"
+                          aria-label={`Open ${scopedProjectGroup.displayName} board`}
+                          onClick={() => {
+                            if (isMobile) setOpenMobile(false);
+                            void router.navigate({
+                              to: "/$environmentId/board/$projectId",
+                              params: {
+                                environmentId: scopedProjectGroup.environmentId,
+                                projectId: scopedProjectGroup.id,
+                              },
+                            });
+                          }}
+                        />
+                      }
+                    >
+                      <LayoutDashboardIcon />
+                    </TooltipTrigger>
+                    <TooltipPopup side="right">Open project board</TooltipPopup>
+                  </Tooltip>
+                ) : null}
                 <Tooltip>
                   <TooltipTrigger
                     render={

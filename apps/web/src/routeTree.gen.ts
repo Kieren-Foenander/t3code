@@ -29,6 +29,7 @@ import { Route as ConnectCallbackRouteImport } from './routes/connect_.callback'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
+import { Route as ChatEnvironmentIdBoardProjectIdRouteImport } from './routes/_chat.$environmentId.board.$projectId'
 
 const UsageRoute = UsageRouteImport.update({
   id: '/usage',
@@ -130,6 +131,12 @@ const ChatEnvironmentIdThreadIdRoute =
     path: '/$environmentId/$threadId',
     getParentRoute: () => ChatRoute,
   } as any)
+const ChatEnvironmentIdBoardProjectIdRoute =
+  ChatEnvironmentIdBoardProjectIdRouteImport.update({
+    id: '/$environmentId/board/$projectId',
+    path: '/$environmentId/board/$projectId',
+    getParentRoute: () => ChatRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
@@ -151,6 +158,7 @@ export interface FileRoutesByFullPath {
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/$environmentId/board/$projectId': typeof ChatEnvironmentIdBoardProjectIdRoute
 }
 export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
@@ -172,6 +180,7 @@ export interface FileRoutesByTo {
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/$environmentId/board/$projectId': typeof ChatEnvironmentIdBoardProjectIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -195,6 +204,7 @@ export interface FileRoutesById {
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/_chat/$environmentId/board/$projectId': typeof ChatEnvironmentIdBoardProjectIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -218,6 +228,7 @@ export interface FileRouteTypes {
     | '/settings/source-control'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/$environmentId/board/$projectId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/connect'
@@ -239,6 +250,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/$environmentId/board/$projectId'
   id:
     | '__root__'
     | '/_chat'
@@ -261,6 +273,7 @@ export interface FileRouteTypes {
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
+    | '/_chat/$environmentId/board/$projectId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -415,6 +428,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatEnvironmentIdThreadIdRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/$environmentId/board/$projectId': {
+      id: '/_chat/$environmentId/board/$projectId'
+      path: '/$environmentId/board/$projectId'
+      fullPath: '/$environmentId/board/$projectId'
+      preLoaderRoute: typeof ChatEnvironmentIdBoardProjectIdRouteImport
+      parentRoute: typeof ChatRoute
+    }
   }
 }
 
@@ -423,6 +443,7 @@ interface ChatRouteChildren {
   ChatIndexRoute: typeof ChatIndexRoute
   ChatEnvironmentIdThreadIdRoute: typeof ChatEnvironmentIdThreadIdRoute
   ChatDraftDraftIdRoute: typeof ChatDraftDraftIdRoute
+  ChatEnvironmentIdBoardProjectIdRoute: typeof ChatEnvironmentIdBoardProjectIdRoute
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
@@ -430,6 +451,7 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatIndexRoute: ChatIndexRoute,
   ChatEnvironmentIdThreadIdRoute: ChatEnvironmentIdThreadIdRoute,
   ChatDraftDraftIdRoute: ChatDraftDraftIdRoute,
+  ChatEnvironmentIdBoardProjectIdRoute: ChatEnvironmentIdBoardProjectIdRoute,
 }
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)

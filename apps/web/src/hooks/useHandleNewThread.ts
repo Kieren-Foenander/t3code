@@ -74,6 +74,8 @@ export function useNewThreadHandler() {
         envMode?: DraftThreadEnvMode;
         startFromOrigin?: boolean;
         replace?: boolean;
+        /** Keep the draft on the current surface instead of opening the focused route. */
+        navigate?: boolean;
         /**
          * Move the viewed draft's typed content (prompt + images) into the
          * draft this request lands on. Set by the draft repo picker: the
@@ -99,6 +101,13 @@ export function useNewThreadHandler() {
         setModelSelection,
       } = useComposerDraftStore.getState();
       const currentRouteTarget = getCurrentRouteTarget();
+      const isCurrentProjectBoard = router.state.matches.some(
+        (match) =>
+          match.routeId === "/_chat/$environmentId/board/$projectId" &&
+          match.params.environmentId === projectRef.environmentId &&
+          match.params.projectId === projectRef.projectId,
+      );
+      const shouldNavigate = options?.navigate ?? !isCurrentProjectBoard;
       // A new thread carries the user's *working mode* from the thread being
       // viewed: model (including options like reasoning effort and context
       // window), permission mode, and interaction mode. Branch, worktree, and
@@ -312,11 +321,13 @@ export function useNewThreadHandler() {
           ) {
             return opened;
           }
-          await router.navigate({
-            to: "/draft/$draftId",
-            params: { draftId: emptyStoredDraftThread.draftId },
-            replace: options?.replace ?? false,
-          });
+          if (shouldNavigate) {
+            await router.navigate({
+              to: "/draft/$draftId",
+              params: { draftId: emptyStoredDraftThread.draftId },
+              replace: options?.replace ?? false,
+            });
+          }
           return opened;
         })();
       }
@@ -386,11 +397,13 @@ export function useNewThreadHandler() {
             ...pickExplicitWorkspaceOptions(options),
           });
           carryComposerContentTo(racedDraft.draftId);
-          await router.navigate({
-            to: "/draft/$draftId",
-            params: { draftId: racedDraft.draftId },
-            replace: options?.replace ?? false,
-          });
+          if (shouldNavigate) {
+            await router.navigate({
+              to: "/draft/$draftId",
+              params: { draftId: racedDraft.draftId },
+              replace: options?.replace ?? false,
+            });
+          }
           return { draftId: racedDraft.draftId, threadId: racedDraft.threadId };
         }
         setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
@@ -419,11 +432,13 @@ export function useNewThreadHandler() {
         }
         carryComposerContentTo(draftId);
 
-        await router.navigate({
-          to: "/draft/$draftId",
-          params: { draftId },
-          replace: options?.replace ?? false,
-        });
+        if (shouldNavigate) {
+          await router.navigate({
+            to: "/draft/$draftId",
+            params: { draftId },
+            replace: options?.replace ?? false,
+          });
+        }
         return { draftId, threadId };
       })();
     },

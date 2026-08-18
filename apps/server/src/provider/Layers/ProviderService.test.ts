@@ -12,7 +12,6 @@ import type {
 } from "@t3tools/contracts";
 import {
   ApprovalRequestId,
-  EnvironmentId,
   EventId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -59,6 +58,7 @@ import {
 import * as ServerConfig from "../../config.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
+import type * as McpSessionRegistry from "../../mcp/McpSessionRegistry.ts";
 import { makeAdapterRegistryMock } from "../testUtils/providerAdapterRegistryMock.ts";
 
 const defaultServerSettingsLayer = ServerSettings.ServerSettingsService.layerTest();
@@ -75,6 +75,8 @@ const claudeAgentInstanceId = ProviderInstanceId.make("claudeAgent");
 const CODEX_DRIVER = ProviderDriverKind.make("codex");
 const CLAUDE_AGENT_DRIVER = ProviderDriverKind.make("claudeAgent");
 const CURSOR_DRIVER = ProviderDriverKind.make("cursor");
+const GROK_DRIVER = ProviderDriverKind.make("grok");
+const OPENCODE_DRIVER = ProviderDriverKind.make("opencode");
 
 type LegacyProviderRuntimeEvent = {
   readonly type: string;
@@ -1962,13 +1964,18 @@ validation.layer("ProviderServiceLive validation", (it) => {
 describe("agent browser access", () => {
   const revokedThreads: Array<ThreadId> = [];
 
-  const startSessionWith = (enableAgentBrowserAccess: boolean, threadId: ThreadId) =>
+  const startSessionWith = (
+    enableAgentBrowserAccess: boolean,
+    threadId: ThreadId,
+    driver = CODEX_DRIVER,
+  ) =>
     Effect.gen(function* () {
-      const issued: Array<ThreadId> = [];
-      const codex = makeFakeCodexAdapter();
+      const issued: Array<McpSessionRegistry.McpCredentialRequest> = [];
+      const adapter = makeFakeCodexAdapter(driver);
+      const providerInstanceId = ProviderInstanceId.make(driver);
       const providerAdapterLayer = Layer.succeed(
         ProviderAdapterRegistry.ProviderAdapterRegistry,
-        makeAdapterRegistryMock({ [CODEX_DRIVER]: codex.adapter }),
+        makeAdapterRegistryMock({ [driver]: adapter.adapter }),
       );
       const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
         Layer.provide(SqlitePersistenceMemory),
@@ -1979,7 +1986,7 @@ describe("agent browser access", () => {
       const providerLayer = makeProviderServiceLive({
         issueMcpCredential: (request) =>
           Effect.sync(() => {
-            issued.push(request.threadId);
+            issued.push(request);
             return undefined;
           }),
         revokeMcpCredential: (revoked) => Effect.sync(() => void revokedThreads.push(revoked)),
@@ -2000,8 +2007,8 @@ describe("agent browser access", () => {
       yield* Effect.gen(function* () {
         const provider = yield* ProviderService.ProviderService;
         return yield* provider.startSession(threadId, {
-          provider: CODEX_DRIVER,
-          providerInstanceId: codexInstanceId,
+          provider: driver,
+          providerInstanceId,
           threadId,
           runtimeMode: "full-access",
         });
@@ -2010,28 +2017,43 @@ describe("agent browser access", () => {
       return issued;
     });
 
-  // Credential issuance is the observable that matters: it is the only place a
-  // credential is minted, and `/mcp` accepts nothing else, so withholding it is
-  // what actually denies every provider and external MCP client.
-  it.effect("requests no MCP credential when agent browser access is off", () =>
+  // Board tools use the same provider-scoped MCP transport. Turning browser
+  // access off now withholds only the preview capability, not the entire
+  // thread-bound tool transport.
+  it.effect("keeps the MCP board credential when agent browser access is off", () =>
     Effect.gen(function* () {
       const issued = yield* startSessionWith(false, asThreadId("thread-browser-off"));
 
-      assert.deepEqual(issued, []);
+      assert.equal(issued[0]?.threadId, asThreadId("thread-browser-off"));
+      assert.deepEqual(issued[0]?.capabilities, new Set(["board"]));
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
-  it.effect("revokes an already-issued credential when access is off", () =>
+  it.effect("attaches the common board toolkit to every built-in provider", () =>
+    Effect.gen(function* () {
+      for (const driver of [
+        CODEX_DRIVER,
+        CLAUDE_AGENT_DRIVER,
+        CURSOR_DRIVER,
+        GROK_DRIVER,
+        OPENCODE_DRIVER,
+      ]) {
+        const threadId = asThreadId(`thread-board-${driver}`);
+        const issued = yield* startSessionWith(false, threadId, driver);
+        assert.equal(issued[0]?.providerInstanceId, ProviderInstanceId.make(driver));
+        assert.deepEqual(issued[0]?.capabilities, new Set(["board"]));
+      }
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("does not revoke board access when browser access is off", () =>
     Effect.gen(function* () {
       const threadId = asThreadId("thread-browser-revoke");
       revokedThreads.length = 0;
 
       yield* startSessionWith(false, threadId);
 
-      // Clearing the in-memory map is not enough: a token issued before the
-      // toggle flipped stays valid against `/mcp` for its whole liveness
-      // window, and later turns refresh it.
-      assert.deepEqual(revokedThreads, [threadId]);
+      assert.deepEqual(revokedThreads, []);
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
@@ -2041,7 +2063,8 @@ describe("agent browser access", () => {
 
       const issued = yield* startSessionWith(true, threadId);
 
-      assert.deepEqual(issued, [threadId]);
+      assert.equal(issued[0]?.threadId, threadId);
+      assert.deepEqual(issued[0]?.capabilities, new Set(["board", "preview"]));
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 });
