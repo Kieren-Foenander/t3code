@@ -1324,6 +1324,51 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
         </div>
       </header>
 
+      {selectedObject || selectedRelationship ? (
+        <aside
+          className="absolute right-4 top-16 z-20 w-72 rounded-xl border border-border bg-background/92 p-3 text-xs shadow-lg backdrop-blur-md"
+          aria-label="Selected board item details"
+        >
+          <p className="font-semibold text-foreground">
+            {selectedObject
+              ? selectedObject.kind.replaceAll("-", " ")
+              : selectedRelationship?.kind.replaceAll("-", " ")}
+          </p>
+          <dl className="mt-2 grid grid-cols-[5rem_1fr] gap-x-2 gap-y-1 text-muted-foreground">
+            <dt>Revision</dt>
+            <dd>{selectedObject?.revision ?? selectedRelationship?.revision}</dd>
+            <dt>Thread</dt>
+            <dd className="truncate">
+              {selectedObject?.originatingThreadId ??
+                selectedRelationship?.originatingThreadId ??
+                "User-created"}
+            </dd>
+            <dt>Turn</dt>
+            <dd className="truncate">
+              {selectedObject?.originatingTurnId ?? selectedRelationship?.originatingTurnId ?? "—"}
+            </dd>
+            <dt>Provider</dt>
+            <dd className="truncate">
+              {selectedObject?.originatingProviderKind ??
+                selectedRelationship?.originatingProviderKind ??
+                "—"}
+            </dd>
+            {selectedObject && activeThreadId ? (
+              <>
+                <dt>Access</dt>
+                <dd>{accessForObject(selectedObject) ?? "inaccessible"}</dd>
+              </>
+            ) : null}
+            {selectedObject?.kind === "file-reference" ? (
+              <>
+                <dt>Source</dt>
+                <dd className="truncate">{selectedObject.checkpointRef ?? "Current workspace"}</dd>
+              </>
+            ) : null}
+          </dl>
+        </aside>
+      ) : null}
+
       <BoardOutline
         objects={objects}
         threadsById={threadsById}
