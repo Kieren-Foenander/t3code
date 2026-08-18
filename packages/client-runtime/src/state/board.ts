@@ -123,8 +123,10 @@ const makeBoardState = Effect.fn("BoardState.make")(function* (projectId: Projec
       const afterSequence = yield* Ref.get(cursor);
       yield* SubscriptionRef.update(state, (current) => ({
         ...current,
-        status: "synchronizing" as const,
-        error: null,
+        status:
+          current.snapshot === null && current.error === null
+            ? ("synchronizing" as const)
+            : current.status,
       }));
       return {
         projectId,
@@ -139,7 +141,7 @@ const makeBoardState = Effect.fn("BoardState.make")(function* (projectId: Projec
           status: current.snapshot === null ? "empty" : current.status,
           error: "Could not synchronize the project board.",
         })),
-      retryExpectedFailureAfter: "250 millis",
+      retryExpectedFailureAfter: "2 seconds",
     },
   ).pipe(Stream.runForEach(applyItem), Effect.forkScoped);
 

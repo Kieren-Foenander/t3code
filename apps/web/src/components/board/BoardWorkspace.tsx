@@ -1114,7 +1114,8 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
             {project?.title ?? "Project board"}
           </h1>
           <p className="text-xs text-muted-foreground">
-            {board.status === "live" ? `${objects.length} objects` : "Synchronizing board…"}
+            {board.error ??
+              (board.status === "live" ? `${objects.length} objects` : "Synchronizing board…")}
           </p>
         </div>
         <div className="pointer-events-auto flex max-w-[calc(100%-16rem)] items-center gap-1 overflow-x-auto rounded-lg border border-border bg-background/90 p-1 shadow-sm">
@@ -1345,6 +1346,20 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
           </Button>
         </div>
       </header>
+
+      {board.error !== null && board.snapshot === null ? (
+        <div
+          role="alert"
+          className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-8"
+        >
+          <div className="max-w-sm rounded-xl border border-destructive/40 bg-background/95 p-4 text-center shadow-lg">
+            <p className="text-sm font-semibold text-foreground">The board could not load</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {board.error} T3 Code will retry automatically.
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {selectedObject || selectedRelationship ? (
         <aside

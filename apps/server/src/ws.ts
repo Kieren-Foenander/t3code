@@ -1067,7 +1067,6 @@ const makeWsRpcLayer = (
                 { startImmediately: true },
               );
 
-              yield* board.ensureThreadFrames(input.projectId);
               const initial =
                 input.afterSequence === undefined
                   ? [
@@ -1085,6 +1084,17 @@ const makeWsRpcLayer = (
                   : input.afterSequence;
               const synchronized =
                 input.requestCompletionMarker === true ? [{ kind: "synchronized" as const }] : [];
+              yield* board.ensureThreadFrames(input.projectId).pipe(
+                Effect.tapError((error) =>
+                  Effect.logWarning("Board frame reconciliation failed after synchronization", {
+                    projectId: input.projectId,
+                    reason: error.reason,
+                    detail: error.message,
+                  }),
+                ),
+                Effect.ignore,
+                Effect.forkScoped,
+              );
               return Stream.concat(
                 Stream.fromIterable([...initial, ...synchronized]),
                 Stream.fromQueue(liveBuffer).pipe(
