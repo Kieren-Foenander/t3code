@@ -71,6 +71,46 @@ export const BoardManifestTool = readonlyBoardTool(
   }).annotate(Tool.Title, "Read board context manifest"),
 );
 
+export const BoardContextTool = readonlyBoardTool(
+  Tool.make("board_context", {
+    description:
+      "Render only explicitly shared board artifacts as compact direct text, lazy object references, and readable spatial tiles when this provider supports images.",
+    parameters: Schema.Struct({}),
+    success: Schema.Struct({
+      mode: Schema.Literals(["image-plus-structure", "structure-only"]),
+      manifest: Schema.Array(
+        Schema.Struct({
+          id: BoardObjectId,
+          kind: Schema.String,
+          revision: NonNegativeInt,
+          label: Schema.String,
+          access: Schema.Literals(["read", "edit"]),
+          position: BoardPoint,
+          size: Schema.Struct({ width: Schema.Number, height: Schema.Number }),
+        }),
+      ),
+      directText: Schema.Array(
+        Schema.Struct({
+          id: BoardObjectId,
+          revision: NonNegativeInt,
+          title: Schema.String,
+          text: Schema.String,
+        }),
+      ),
+      lazyObjectIds: Schema.Array(BoardObjectId),
+      tiles: Schema.Array(
+        Schema.Struct({
+          id: Schema.String,
+          objectIds: Schema.Array(BoardObjectId),
+          imageDataUrl: Schema.String,
+        }),
+      ),
+    }),
+    failure: BoardOperationError,
+    dependencies,
+  }).annotate(Tool.Title, "Render shared board context"),
+);
+
 export const BoardCreateNoteTool = mutatingBoardTool(
   Tool.make("board_create_note", {
     description:
@@ -205,6 +245,7 @@ export const BoardUndoTool = mutatingBoardTool(
 export const BoardToolkit = Toolkit.make(
   BoardSearchTool,
   BoardManifestTool,
+  BoardContextTool,
   BoardReadTool,
   BoardCreateNoteTool,
   BoardCreateShapeTool,

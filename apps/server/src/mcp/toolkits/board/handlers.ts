@@ -11,6 +11,10 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
 import { BoardService, type BoardServiceShape } from "../../../board/BoardService.ts";
+import {
+  providerBoardContextSupportsImages,
+  renderBoardProviderContext,
+} from "../../../board/context.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { BoardToolkit } from "./tools.ts";
 
@@ -104,6 +108,16 @@ const handlers = {
                   : object.label,
         })),
       }),
+    ),
+  board_context: () =>
+    invoke("context", ({ scope, snapshot }) =>
+      Effect.succeed(
+        renderBoardProviderContext({
+          snapshot,
+          threadId: scope.threadId,
+          supportsImages: providerBoardContextSupportsImages(scope.providerKind),
+        }),
+      ),
     ),
   board_read: ({ objectIds }) =>
     invoke("read", ({ snapshot }) => {
