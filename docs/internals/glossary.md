@@ -61,6 +61,18 @@ ids and revisions and may record the thread and turn that created them.
 Explicit read or edit authority from a board object to a thread. A connector is not a grant. The
 special whole-board grant includes future objects and can be revoked without changing prior messages.
 
+#### Board authority
+
+The read scope and write authority applied to an agent thread. A project supplies `own` or `board`
+defaults; explicit object and whole-board grants are durable per-thread overrides. Runtime permission
+mode is separate and never controls board discovery.
+
+#### Board operation
+
+One attributed agent mutation or atomic batch. It records thread, turn, provider, affected objects,
+and a preimage used for board-only undo. It is independent of a workspace checkpoint and provider
+conversation history.
+
 ### Orchestration
 
 Orchestration is the server-side domain layer that turns runtime activity into stable app state. The main entry point is [OrchestrationEngine.ts][7], with core logic in [decider.ts][8] and [projector.ts][4].

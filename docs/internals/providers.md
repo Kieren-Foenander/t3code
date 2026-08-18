@@ -39,6 +39,11 @@ directory to route session and turn operations for a thread, so callers name a t
 Adding a driver means writing the driver plus adapter and adding it to `BUILT_IN_DRIVERS`. No
 orchestration, contract, or client change is required for the common case.
 
+All five built-in drivers receive the thread-scoped project-board toolkit through the common MCP
+session created by `ProviderService`. Board authority and revision checks live behind that boundary,
+not in individual adapters. See [project-board.md](./project-board.md#authority-and-providers) for
+the capability matrix and provider-context fallback behavior.
+
 ## How provider work is requested
 
 Clients never call a provider directly. They dispatch orchestration commands over the RPC method
