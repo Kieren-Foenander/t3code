@@ -53,6 +53,33 @@ describe("board stream reducer", () => {
     expect(result).toBe(snapshot);
   });
 
+  it("converges independent clients and rehydrates reconnects without duplicate changes", () => {
+    const initialItem = {
+      kind: "snapshot" as const,
+      snapshot: { projectId, sequence: 1, objects: [object], relationships: [], grants: [] },
+    };
+    let firstClient = applyBoardStreamItem(null, initialItem);
+    let secondClient = applyBoardStreamItem(null, initialItem);
+    const committedMove = {
+      kind: "object-upserted" as const,
+      projectId,
+      sequence: 2,
+      commandId: CommandId.make("move-from-first-client"),
+      object: { ...object, position: { x: 320, y: 180 }, revision: 2 },
+    };
+
+    firstClient = applyBoardStreamItem(firstClient, committedMove);
+    secondClient = applyBoardStreamItem(secondClient, committedMove);
+    expect(secondClient).toEqual(firstClient);
+
+    const reconnected = applyBoardStreamItem(null, {
+      kind: "snapshot",
+      snapshot: firstClient!,
+    });
+    expect(applyBoardStreamItem(reconnected, committedMove)).toBe(reconnected);
+    expect(reconnected).toEqual(firstClient);
+  });
+
   it("applies relationship deltas without replacing board objects", () => {
     const snapshot = { projectId, sequence: 1, objects: [object], relationships: [], grants: [] };
     const result = applyBoardStreamItem(snapshot, {
