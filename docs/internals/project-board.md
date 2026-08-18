@@ -63,11 +63,16 @@ and opens the canonical thread route for detailed work.
 The board has its own project-scoped snapshot/delta subscription and never adds board objects to
 shell or thread detail snapshots. Shell rows expose at most three paths from the latest checkpoint
 plus the total changed-file count for semantic summaries; full checkpoint lists remain in thread
-detail. Focused tests hold a representative 500-object JSON snapshot below 512 KiB and a
-single-object delta below 2 KiB. Viewport culling mounts fewer than 30 cards from the representative
-400-frame layout; only close thread cards call the detail selector and mount a timeline.
+detail. Focused tests measure a representative 500-object JSON snapshot at 165,113 bytes and a
+single-object delta at 420 bytes, with regression budgets of 512 KiB and 2 KiB respectively.
+Viewport culling mounts fewer than 30 cards from the representative 400-frame layout; only close
+thread cards call the detail selector and mount a timeline.
 
 Durable objects, grants, authority, activities, and operation receipts converge through ordered
 sequences. Reconnect replays after the client's cursor; command ids deduplicate retries and expected
-revisions reject unsafe concurrent writes. Subscription and MCP endpoints use relative/single-origin
-routing, so local, relay, and tunnel connections do not bake in a host origin.
+revisions reject unsafe concurrent writes. Subscription requests use the same authenticated
+WebSocket RPC whether the socket arrived locally, through T3 Connect relay, or through a tunnel. MCP
+endpoints derive from the server's bound address instead of a client origin. Transport tests cover
+local, tailnet, wildcard-bind, relay, and managed-tunnel endpoint discovery, while board RPC tests
+cover the shared subscription and authorization path. Board code never sets `VITE_HTTP_URL` or
+`VITE_WS_URL`.
