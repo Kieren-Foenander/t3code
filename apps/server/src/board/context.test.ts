@@ -116,6 +116,47 @@ describe("board provider context", () => {
     expect(result.tiles[0]?.imageDataUrl).toContain("data:image/svg+xml");
   });
 
+  it("keeps objects at tile edges large enough to remain readable", () => {
+    const edgeId = BoardObjectId.make("note:edge");
+    const result = renderBoardProviderContext({
+      threadId,
+      supportsImages: true,
+      snapshot: {
+        projectId,
+        sequence: 1,
+        objects: [
+          {
+            id: edgeId,
+            projectId,
+            kind: "text-note",
+            position: { x: BOARD_CONTEXT_TILE_WIDTH - 1, y: 0 },
+            size: { width: 320, height: 240 },
+            title: "Edge",
+            text: "small",
+            revision: 1,
+            createdAt: now,
+            updatedAt: now,
+            tombstonedAt: null,
+          },
+        ],
+        relationships: [],
+        grants: [
+          {
+            projectId,
+            threadId,
+            objectId: edgeId,
+            access: "read",
+            createdAt: now,
+            revokedAt: null,
+          },
+        ],
+      },
+    });
+    const svg = decodeURIComponent(result.tiles[0]?.imageDataUrl.split(",")[1] ?? "");
+    expect(svg).toContain('width="100"');
+    expect(svg).not.toContain('width="-');
+  });
+
   it("preserves graph structure only when both endpoints are explicitly shared", () => {
     const leftId = BoardObjectId.make("note:left");
     const rightId = BoardObjectId.make("note:right");

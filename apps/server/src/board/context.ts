@@ -39,8 +39,8 @@ const renderTile = (objects: ReadonlyArray<BoardObject>, tileX: number, tileY: n
   const originY = tileY * BOARD_CONTEXT_TILE_HEIGHT;
   const nodes = objects
     .map((object) => {
-      const x = Math.max(8, object.position.x - originX);
-      const y = Math.max(8, object.position.y - originY);
+      const x = Math.min(Math.max(8, object.position.x - originX), BOARD_CONTEXT_TILE_WIDTH - 108);
+      const y = Math.min(Math.max(8, object.position.y - originY), BOARD_CONTEXT_TILE_HEIGHT - 62);
       const width = Math.min(Math.max(100, object.size.width), BOARD_CONTEXT_TILE_WIDTH - x - 8);
       const height = Math.min(Math.max(54, object.size.height), BOARD_CONTEXT_TILE_HEIGHT - y - 8);
       return `<g data-board-object-id="${escapeXml(object.id)}"><rect x="${x}" y="${y}" width="${width}" height="${height}" rx="10" fill="#fff" stroke="#64748b"/><text x="${x + 10}" y="${y + 24}" font-family="sans-serif" font-size="14" fill="#0f172a">${escapeXml(labelFor(object).slice(0, 80))}</text><text x="${x + 10}" y="${y + 44}" font-family="monospace" font-size="10" fill="#475569">${escapeXml(object.id)}</text></g>`;
