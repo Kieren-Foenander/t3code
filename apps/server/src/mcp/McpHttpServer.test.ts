@@ -38,6 +38,9 @@ const TestLayer = McpHttpServer.PreviewToolkitRegistrationLive.pipe(
   Layer.provideMerge(McpServer.McpServer.layer),
   Layer.provideMerge(PreviewAutomationBroker.layer.pipe(Layer.provide(NodeServices.layer))),
 );
+const BoardRegistrationTestLayer = McpHttpServer.BoardToolkitRegistrationLive.pipe(
+  Layer.provideMerge(McpServer.McpServer.layer),
+);
 
 it("normalizes empty successful notification responses to accepted", () => {
   const notificationResponse = McpHttpServer.normalizeMcpHttpResponse(
@@ -50,6 +53,32 @@ it("normalizes empty successful notification responses to accepted", () => {
   );
   expect(resultResponse.status).toBe(200);
 });
+
+it.effect("registers the complete semantic board toolkit with MCP", () =>
+  Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const names = new Set(server.tools.map(({ tool }) => tool.name));
+    expect(names).toEqual(
+      new Set([
+        "board_search",
+        "board_manifest",
+        "board_context",
+        "board_read",
+        "board_create_note",
+        "board_create_shape",
+        "board_update_note",
+        "board_place",
+        "board_update_object",
+        "board_connect",
+        "board_update_relationship",
+        "board_create_group",
+        "board_tombstone",
+        "board_batch",
+        "board_undo",
+      ]),
+    );
+  }).pipe(Effect.provide(BoardRegistrationTestLayer)),
+);
 
 it.effect("returns bounded structural preview snapshot failures", () =>
   Effect.scoped(

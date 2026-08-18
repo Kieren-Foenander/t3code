@@ -23,6 +23,7 @@ import {
   PreviewStandardToolkit,
 } from "./toolkits/preview/tools.ts";
 import { BoardToolkitHandlersLive } from "./toolkits/board/handlers.ts";
+import { BoardToolkit } from "./toolkits/board/tools.ts";
 
 const unauthorized = HttpServerResponse.jsonUnsafe(
   {
@@ -217,7 +218,9 @@ export const PreviewToolkitRegistrationLive = Layer.mergeAll(
   PreviewSnapshotRegistrationLive,
 );
 
-export const BoardToolkitRegistrationLive = BoardToolkitHandlersLive;
+export const BoardToolkitRegistrationLive = McpServer.toolkit(BoardToolkit).pipe(
+  Layer.provide(BoardToolkitHandlersLive),
+);
 
 const McpTransportLive = McpServer.layerHttp({
   name: "T3 Code",
