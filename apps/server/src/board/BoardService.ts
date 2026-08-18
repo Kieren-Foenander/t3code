@@ -1,9 +1,12 @@
 import {
   BoardCommand,
+  BoardActivity,
   BoardGrant,
   BoardObject,
   BoardOperationError,
   BoardProjectAuthority,
+  BoardObjectId,
+  BoardRelationshipId,
   BoardRelationship,
   BoardSnapshot,
   BOARD_WHOLE_BOARD_OBJECT_ID,
@@ -24,13 +27,23 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import { decideBoardCommand } from "./decider.ts";
+import {
+  decideBoardCommand,
+  decideBoardUndo,
+  type BoardDomainEvent,
+  type BoardOperationPreimage,
+} from "./decider.ts";
 import { projectBoardEvent } from "./projector.ts";
 
 type BoardObjectRow = { readonly payloadJson: string };
 type BoardRelationshipRow = { readonly payloadJson: string };
 type BoardGrantRow = { readonly payloadJson: string };
 type BoardAuthorityRow = { readonly payloadJson: string };
+type BoardActivityRow = { readonly payloadJson: string };
+type BoardOperationRow = {
+  readonly preimageJson: string;
+  readonly undoneAt: string | null;
+};
 type BoardEventRow = {
   readonly sequence: number;
   readonly projectId: string;
@@ -67,6 +80,20 @@ const BoardObjectJson = Schema.fromJsonString(BoardObject);
 const BoardRelationshipJson = Schema.fromJsonString(BoardRelationship);
 const BoardGrantJson = Schema.fromJsonString(BoardGrant);
 const BoardAuthorityJson = Schema.fromJsonString(BoardProjectAuthority);
+const BoardActivityJson = Schema.fromJsonString(BoardActivity);
+const BoardOperationPreimageJson = Schema.fromJsonString(
+  Schema.Struct({
+    objects: Schema.Array(
+      Schema.Struct({ objectId: BoardObjectId, object: Schema.NullOr(BoardObject) }),
+    ),
+    relationships: Schema.Array(
+      Schema.Struct({
+        relationshipId: BoardRelationshipId,
+        relationship: Schema.NullOr(BoardRelationship),
+      }),
+    ),
+  }),
+);
 const decodeBoardObject = Schema.decodeUnknownSync(BoardObjectJson);
 const encodeBoardObject = Schema.encodeSync(BoardObjectJson);
 const decodeBoardRelationship = Schema.decodeUnknownSync(BoardRelationshipJson);
@@ -75,6 +102,10 @@ const decodeBoardGrant = Schema.decodeUnknownSync(BoardGrantJson);
 const encodeBoardGrant = Schema.encodeSync(BoardGrantJson);
 const decodeBoardAuthority = Schema.decodeUnknownSync(BoardAuthorityJson);
 const encodeBoardAuthority = Schema.encodeSync(BoardAuthorityJson);
+const decodeBoardActivity = Schema.decodeUnknownSync(BoardActivityJson);
+const encodeBoardActivity = Schema.encodeSync(BoardActivityJson);
+const decodeBoardOperationPreimage = Schema.decodeUnknownSync(BoardOperationPreimageJson);
+const encodeBoardOperationPreimage = Schema.encodeSync(BoardOperationPreimageJson);
 const isBoardOperationError = Schema.is(BoardOperationError);
 
 const persistenceError = (cause: unknown) =>
@@ -140,6 +171,19 @@ export const layer = Layer.effect(
           };
     });
 
+    const loadActivities = Effect.fn("BoardService.loadActivities")(function* (
+      projectId: ProjectId,
+    ) {
+      const rows = yield* sql<BoardActivityRow>`
+        SELECT payload_json AS "payloadJson"
+        FROM projection_board_activities
+        WHERE project_id = ${projectId}
+        ORDER BY updated_sequence DESC
+        LIMIT 100
+      `;
+      return rows.map((row) => decodeBoardActivity(row.payloadJson));
+    });
+
     const requireProject = Effect.fn("BoardService.requireProject")(function* (
       projectId: ProjectId,
     ) {
@@ -195,17 +239,146 @@ export const layer = Layer.effect(
                   ORDER BY created_at ASC, thread_id ASC
                 `
               : [];
-          const events = yield* Effect.try({
-            try: () =>
-              decideBoardCommand(command, {
-                objects,
-                relationships,
-                grants,
-                authority,
-                threadIds: threadRows.map((row) => ThreadId.make(row.threadId)),
-              }),
-            catch: (cause) => (isBoardOperationError(cause) ? cause : persistenceError(cause)),
-          });
+          const decisionState = {
+            objects,
+            relationships,
+            grants,
+            authority,
+            threadIds: threadRows.map((row) => ThreadId.make(row.threadId)),
+          };
+          let events: ReadonlyArray<BoardDomainEvent>;
+          if (command.type === "board.operation.undo") {
+            const operationRows = yield* sql<BoardOperationRow>`
+              SELECT preimage_json AS "preimageJson", undone_at AS "undoneAt"
+              FROM board_operations
+              WHERE operation_id = ${command.operationId} AND project_id = ${command.projectId}
+              LIMIT 1
+            `;
+            const operation = operationRows[0];
+            if (!operation) {
+              return yield* new BoardOperationError({
+                reason: "object-not-found",
+                message: `Board operation ${command.operationId} was not found.`,
+              });
+            }
+            if (operation.undoneAt !== null) {
+              return yield* new BoardOperationError({
+                reason: "revision-conflict",
+                message: "This board operation has already been undone.",
+              });
+            }
+            const activityRows = yield* sql<BoardActivityRow>`
+              SELECT payload_json AS "payloadJson"
+              FROM projection_board_activities
+              WHERE operation_id = ${command.operationId}
+              LIMIT 1
+            `;
+            const activity = activityRows[0]
+              ? decodeBoardActivity(activityRows[0].payloadJson)
+              : undefined;
+            events = [
+              ...decideBoardUndo(
+                command,
+                decisionState,
+                decodeBoardOperationPreimage(operation.preimageJson),
+              ),
+              ...(activity
+                ? [
+                    {
+                      type: "board.activity-updated" as const,
+                      projectId: command.projectId,
+                      commandId: command.commandId,
+                      occurredAt: command.createdAt,
+                      activity: { ...activity, undoneAt: command.createdAt },
+                    },
+                  ]
+                : []),
+            ];
+            yield* sql`
+              UPDATE board_operations
+              SET undone_at = ${command.createdAt}
+              WHERE operation_id = ${command.operationId}
+            `;
+          } else {
+            events = yield* Effect.try({
+              try: () => decideBoardCommand(command, decisionState),
+              catch: (cause) => (isBoardOperationError(cause) ? cause : persistenceError(cause)),
+            });
+            const operationId =
+              "originatingOperationId" in command ? command.originatingOperationId : undefined;
+            const originatingThreadId =
+              "originatingThreadId" in command ? command.originatingThreadId : undefined;
+            const originatingProviderInstanceId =
+              "originatingProviderInstanceId" in command
+                ? command.originatingProviderInstanceId
+                : undefined;
+            const originatingTurnId =
+              "originatingTurnId" in command ? command.originatingTurnId : undefined;
+            if (operationId && originatingThreadId && originatingProviderInstanceId) {
+              const objectIds = new Set<BoardObjectId>();
+              const relationshipIds = new Set<BoardRelationshipId>();
+              for (const event of events) {
+                if (
+                  event.type === "board.object-created" ||
+                  event.type === "board.object-updated"
+                ) {
+                  objectIds.add(event.object.id);
+                } else if (event.type === "board.object-moved") {
+                  objectIds.add(event.objectId);
+                } else if (event.type === "board.relationship-created") {
+                  relationshipIds.add(event.relationship.id);
+                  objectIds.add(event.relationship.sourceObjectId);
+                  objectIds.add(event.relationship.targetObjectId);
+                }
+              }
+              const preimage: BoardOperationPreimage = {
+                objects: [...objectIds].map((objectId) => ({
+                  objectId,
+                  object: objects.find((object) => object.id === objectId) ?? null,
+                })),
+                relationships: [...relationshipIds].map((relationshipId) => ({
+                  relationshipId,
+                  relationship:
+                    relationships.find((relationship) => relationship.id === relationshipId) ??
+                    null,
+                })),
+              };
+              const activity: BoardActivity = {
+                operationId,
+                commandId: command.commandId,
+                projectId: command.projectId,
+                summary: command.type.replaceAll("board.", "").replaceAll(".", " "),
+                objectIds: [...objectIds],
+                originatingThreadId,
+                ...(originatingTurnId === undefined ? {} : { originatingTurnId }),
+                originatingProviderInstanceId,
+                ...("originatingProviderKind" in command &&
+                command.originatingProviderKind !== undefined
+                  ? { originatingProviderKind: command.originatingProviderKind }
+                  : {}),
+                createdAt: command.createdAt,
+                undoneAt: null,
+              };
+              yield* sql`
+                INSERT INTO board_operations (
+                  operation_id, command_id, project_id, preimage_json, created_at, undone_at
+                ) VALUES (
+                  ${operationId}, ${command.commandId}, ${command.projectId},
+                  ${encodeBoardOperationPreimage(preimage)}, ${command.createdAt}, ${null}
+                )
+              `;
+              events = [
+                ...events,
+                {
+                  type: "board.activity-updated",
+                  projectId: command.projectId,
+                  commandId: command.commandId,
+                  occurredAt: command.createdAt,
+                  activity,
+                },
+              ];
+            }
+          }
           const deltas: BoardDelta[] = [];
           let lastSequence =
             (yield* sql<{ readonly sequence: number }>`
@@ -213,6 +386,38 @@ export const layer = Layer.effect(
               `)[0]?.sequence ?? 0;
 
           for (const event of events) {
+            if (event.type === "board.activity-updated") {
+              const payloadJson = encodeBoardActivity(event.activity);
+              const inserted = yield* sql<{ readonly sequence: number }>`
+                INSERT INTO board_events (
+                  project_id, command_id, event_type, payload_json, occurred_at
+                ) VALUES (
+                  ${command.projectId}, ${command.commandId}, ${event.type},
+                  ${payloadJson}, ${event.occurredAt}
+                )
+                RETURNING sequence
+              `;
+              lastSequence = inserted[0]?.sequence ?? lastSequence;
+              yield* sql`
+                INSERT INTO projection_board_activities (
+                  operation_id, project_id, payload_json, updated_sequence
+                ) VALUES (
+                  ${event.activity.operationId}, ${event.activity.projectId}, ${payloadJson},
+                  ${lastSequence}
+                )
+                ON CONFLICT(operation_id) DO UPDATE SET
+                  payload_json = excluded.payload_json,
+                  updated_sequence = excluded.updated_sequence
+              `;
+              deltas.push({
+                kind: "activity-upserted",
+                projectId: command.projectId,
+                sequence: lastSequence,
+                commandId: command.commandId,
+                activity: event.activity,
+              });
+              continue;
+            }
             if (event.type === "board.authority-updated") {
               const payloadJson = encodeBoardAuthority(event.authority);
               const inserted = yield* sql<{ readonly sequence: number }>`
@@ -398,6 +603,7 @@ export const layer = Layer.effect(
         const relationships = yield* loadRelationships(projectId);
         const grants = yield* loadGrants(projectId);
         const authority = yield* loadAuthority(projectId);
+        const activities = yield* loadActivities(projectId);
         const sequence =
           (yield* sql<{ readonly sequence: number }>`
               SELECT COALESCE(MAX(sequence), 0) AS sequence
@@ -411,6 +617,7 @@ export const layer = Layer.effect(
           relationships,
           grants,
           authority,
+          activities,
         };
       }).pipe(
         Effect.mapError((cause) =>
@@ -464,6 +671,9 @@ export const layer = Layer.effect(
             visibleIds.has(relationship.targetObjectId),
         ),
         grants,
+        activities: snapshot.activities?.filter(
+          (activity) => activity.originatingThreadId === threadId,
+        ),
       };
     };
 
@@ -509,7 +719,11 @@ export const layer = Layer.effect(
                   : [],
               ),
             ]);
+            const hasExplicitFullBoardEdit = accessible.grants.some(
+              (grant) => grant.objectId === BOARD_WHOLE_BOARD_OBJECT_ID && grant.access === "edit",
+            );
             const authorized = (() => {
+              if (command.type === "board.operation.undo") return hasExplicitFullBoardEdit;
               if (command.type === "board.batch") {
                 for (const operation of command.operations) {
                   if (operation.type === "note.create" || operation.type === "shape.create") {
@@ -626,13 +840,21 @@ export const layer = Layer.effect(
                     commandId: CommandId.make(row.commandId),
                     authority: decodeBoardAuthority(row.payloadJson),
                   }
-                : {
-                    kind: "object-upserted" as const,
-                    projectId: ProjectId.make(row.projectId),
-                    sequence: row.sequence,
-                    commandId: CommandId.make(row.commandId),
-                    object: decodeBoardObject(row.payloadJson),
-                  },
+                : row.eventType === "board.activity-updated"
+                  ? {
+                      kind: "activity-upserted" as const,
+                      projectId: ProjectId.make(row.projectId),
+                      sequence: row.sequence,
+                      commandId: CommandId.make(row.commandId),
+                      activity: decodeBoardActivity(row.payloadJson),
+                    }
+                  : {
+                      kind: "object-upserted" as const,
+                      projectId: ProjectId.make(row.projectId),
+                      sequence: row.sequence,
+                      commandId: CommandId.make(row.commandId),
+                      object: decodeBoardObject(row.payloadJson),
+                    },
         );
       }).pipe(
         Effect.mapError((cause) =>

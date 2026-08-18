@@ -62,6 +62,17 @@ function relativePosition(snapshot: BoardSnapshot, threadId: string): BoardPoint
     : { x: 0, y: 0 };
 }
 
+const operationProvenance = (
+  scope: McpInvocationContext.McpInvocationScope,
+  commandId: CommandId,
+) => ({
+  originatingThreadId: scope.threadId,
+  ...(scope.activeTurnId === undefined ? {} : { originatingTurnId: scope.activeTurnId }),
+  originatingProviderInstanceId: scope.providerInstanceId,
+  ...(scope.providerKind === undefined ? {} : { originatingProviderKind: scope.providerKind }),
+  originatingOperationId: commandId,
+});
+
 const handlers = {
   board_search: ({ query }) =>
     invoke("search", ({ snapshot }) => {
@@ -109,10 +120,7 @@ const handlers = {
         position: input.position ?? relativePosition(snapshot, scope.threadId),
         title: input.title,
         text: input.text,
-        originatingThreadId: scope.threadId,
-        ...(scope.activeTurnId === undefined ? {} : { originatingTurnId: scope.activeTurnId }),
-        originatingProviderInstanceId: scope.providerInstanceId,
-        originatingOperationId: commandId,
+        ...operationProvenance(scope, commandId),
         createdAt,
       }),
     ),
@@ -126,10 +134,7 @@ const handlers = {
         position: input.position ?? relativePosition(snapshot, scope.threadId),
         shape: input.shape,
         label: input.label,
-        originatingThreadId: scope.threadId,
-        ...(scope.activeTurnId === undefined ? {} : { originatingTurnId: scope.activeTurnId }),
-        originatingProviderInstanceId: scope.providerInstanceId,
-        originatingOperationId: commandId,
+        ...operationProvenance(scope, commandId),
         createdAt,
       }),
     ),
@@ -143,6 +148,7 @@ const handlers = {
         title: input.title,
         text: input.text,
         expectedRevision: input.expectedRevision,
+        ...operationProvenance(scope, commandId),
         createdAt,
       }),
     ),
@@ -155,6 +161,7 @@ const handlers = {
         objectId: input.objectId,
         position: input.position,
         expectedRevision: input.expectedRevision,
+        ...operationProvenance(scope, commandId),
         createdAt,
       }),
     ),
@@ -169,10 +176,7 @@ const handlers = {
         ...(input.label === undefined ? {} : { label: input.label }),
         sourceObjectId: input.sourceObjectId,
         targetObjectId: input.targetObjectId,
-        originatingThreadId: scope.threadId,
-        ...(scope.activeTurnId === undefined ? {} : { originatingTurnId: scope.activeTurnId }),
-        originatingProviderInstanceId: scope.providerInstanceId,
-        originatingOperationId: commandId,
+        ...operationProvenance(scope, commandId),
         createdAt,
       }),
     ),
@@ -189,10 +193,7 @@ const handlers = {
           height: Math.max(120, input.height ?? 560),
         },
         title: input.title,
-        originatingThreadId: scope.threadId,
-        ...(scope.activeTurnId === undefined ? {} : { originatingTurnId: scope.activeTurnId }),
-        originatingProviderInstanceId: scope.providerInstanceId,
-        originatingOperationId: commandId,
+        ...operationProvenance(scope, commandId),
         createdAt,
       }),
     ),
@@ -204,6 +205,7 @@ const handlers = {
         projectId: snapshot.projectId,
         objectId: input.objectId,
         expectedRevision: input.expectedRevision,
+        ...operationProvenance(scope, commandId),
         createdAt,
       }),
     ),
@@ -214,10 +216,17 @@ const handlers = {
         commandId,
         projectId: snapshot.projectId,
         operations,
-        originatingThreadId: scope.threadId,
-        ...(scope.activeTurnId === undefined ? {} : { originatingTurnId: scope.activeTurnId }),
-        originatingProviderInstanceId: scope.providerInstanceId,
-        originatingOperationId: commandId,
+        ...operationProvenance(scope, commandId),
+        createdAt,
+      }),
+    ),
+  board_undo: ({ operationId }) =>
+    invoke("undo", ({ scope, board, snapshot, commandId, createdAt }) =>
+      board.dispatchAsThread(scope.threadId, {
+        type: "board.operation.undo",
+        commandId,
+        projectId: snapshot.projectId,
+        operationId,
         createdAt,
       }),
     ),

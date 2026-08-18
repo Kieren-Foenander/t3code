@@ -55,6 +55,7 @@ import Migration0039 from "./Migrations/039_ProjectionProjectsDefaultThreadEnvMo
 import Migration0040 from "./Migrations/040_ProjectionProjectFaviconPath.ts";
 import Migration0041 from "./Migrations/041_ProjectBoards.ts";
 import Migration0042 from "./Migrations/042_BoardAuthority.ts";
+import Migration0043 from "./Migrations/043_BoardOperations.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -109,6 +110,7 @@ export const migrationEntries = [
   [40, "ProjectionProjectFaviconPath", Migration0040],
   [41, "ProjectBoards", Migration0041],
   [42, "BoardAuthority", Migration0042],
+  [43, "BoardOperations", Migration0043],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

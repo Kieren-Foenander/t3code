@@ -5,6 +5,7 @@ import {
   BoardPoint,
   BoardBatchOperation,
   BoardDispatchResult,
+  CommandId,
   NonNegativeInt,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -190,6 +191,17 @@ export const BoardBatchTool = mutatingBoardTool(
   }).annotate(Tool.Title, "Apply an atomic board operation"),
 );
 
+export const BoardUndoTool = mutatingBoardTool(
+  Tool.make("board_undo", {
+    description:
+      "Undo one attributed atomic board operation. Requires explicit full-board edit authority and changes only board history.",
+    parameters: Schema.Struct({ operationId: CommandId }),
+    success: BoardDispatchResult,
+    failure: BoardOperationError,
+    dependencies,
+  }).annotate(Tool.Title, "Undo board operation"),
+);
+
 export const BoardToolkit = Toolkit.make(
   BoardSearchTool,
   BoardManifestTool,
@@ -202,4 +214,5 @@ export const BoardToolkit = Toolkit.make(
   BoardCreateGroupTool,
   BoardTombstoneTool,
   BoardBatchTool,
+  BoardUndoTool,
 );

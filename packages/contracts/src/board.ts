@@ -48,6 +48,7 @@ const BoardObjectBase = {
   originatingThreadId: Schema.optional(ThreadId),
   originatingTurnId: Schema.optional(TurnId),
   originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingProviderKind: Schema.optional(TrimmedNonEmptyString),
   originatingOperationId: Schema.optional(CommandId),
 } as const;
 
@@ -119,6 +120,7 @@ export const BoardRelationship = Schema.Struct({
   originatingThreadId: Schema.optional(ThreadId),
   originatingTurnId: Schema.optional(TurnId),
   originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingProviderKind: Schema.optional(TrimmedNonEmptyString),
   originatingOperationId: Schema.optional(CommandId),
 });
 export type BoardRelationship = typeof BoardRelationship.Type;
@@ -141,6 +143,21 @@ export const BoardProjectAuthority = Schema.Struct({
 });
 export type BoardProjectAuthority = typeof BoardProjectAuthority.Type;
 
+export const BoardActivity = Schema.Struct({
+  operationId: CommandId,
+  commandId: CommandId,
+  projectId: ProjectId,
+  summary: TrimmedNonEmptyString,
+  objectIds: Schema.Array(BoardObjectId),
+  originatingThreadId: ThreadId,
+  originatingTurnId: Schema.optional(TurnId),
+  originatingProviderInstanceId: ProviderInstanceId,
+  originatingProviderKind: Schema.optional(TrimmedNonEmptyString),
+  createdAt: IsoDateTime,
+  undoneAt: Schema.NullOr(IsoDateTime),
+});
+export type BoardActivity = typeof BoardActivity.Type;
+
 export const BoardSnapshot = Schema.Struct({
   projectId: ProjectId,
   sequence: NonNegativeInt,
@@ -148,6 +165,7 @@ export const BoardSnapshot = Schema.Struct({
   relationships: Schema.Array(BoardRelationship),
   grants: Schema.Array(BoardGrant),
   authority: Schema.optional(BoardProjectAuthority),
+  activities: Schema.optional(Schema.Array(BoardActivity)),
 });
 export type BoardSnapshot = typeof BoardSnapshot.Type;
 
@@ -186,11 +204,20 @@ export const BoardAuthorityUpsertedDelta = Schema.Struct({
   authority: BoardProjectAuthority,
 });
 
+export const BoardActivityUpsertedDelta = Schema.Struct({
+  kind: Schema.Literal("activity-upserted"),
+  projectId: ProjectId,
+  sequence: NonNegativeInt,
+  commandId: CommandId,
+  activity: BoardActivity,
+});
+
 export const BoardDelta = Schema.Union([
   BoardObjectUpsertedDelta,
   BoardRelationshipUpsertedDelta,
   BoardGrantUpsertedDelta,
   BoardAuthorityUpsertedDelta,
+  BoardActivityUpsertedDelta,
 ]);
 export type BoardDelta = typeof BoardDelta.Type;
 
@@ -215,6 +242,11 @@ export const BoardMoveObjectCommand = Schema.Struct({
   objectId: BoardObjectId,
   position: BoardPoint,
   expectedRevision: Schema.optional(BoardRevision),
+  originatingThreadId: Schema.optional(ThreadId),
+  originatingTurnId: Schema.optional(TurnId),
+  originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingProviderKind: Schema.optional(TrimmedNonEmptyString),
+  originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
 
@@ -239,6 +271,7 @@ export const BoardCreateNoteCommand = Schema.Struct({
   originatingThreadId: Schema.optional(ThreadId),
   originatingTurnId: Schema.optional(TurnId),
   originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingProviderKind: Schema.optional(TrimmedNonEmptyString),
   originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
@@ -251,6 +284,11 @@ export const BoardUpdateNoteCommand = Schema.Struct({
   title: Schema.optional(TrimmedNonEmptyString),
   text: Schema.optional(Schema.String),
   expectedRevision: BoardRevision,
+  originatingThreadId: Schema.optional(ThreadId),
+  originatingTurnId: Schema.optional(TurnId),
+  originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingProviderKind: Schema.optional(TrimmedNonEmptyString),
+  originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
 
@@ -269,6 +307,11 @@ export const BoardUpdateObjectCommand = Schema.Struct({
   endLine: Schema.optional(Schema.NullOr(NonNegativeInt)),
   checkpointRef: Schema.optional(Schema.NullOr(CheckpointRef)),
   expectedRevision: BoardRevision,
+  originatingThreadId: Schema.optional(ThreadId),
+  originatingTurnId: Schema.optional(TurnId),
+  originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingProviderKind: Schema.optional(TrimmedNonEmptyString),
+  originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
 
@@ -278,6 +321,11 @@ export const BoardPromoteNoteCommand = Schema.Struct({
   projectId: ProjectId,
   objectId: BoardObjectId,
   expectedRevision: BoardRevision,
+  originatingThreadId: Schema.optional(ThreadId),
+  originatingTurnId: Schema.optional(TurnId),
+  originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingProviderKind: Schema.optional(TrimmedNonEmptyString),
+  originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
 
@@ -287,6 +335,11 @@ export const BoardSetObjectTombstoneCommand = Schema.Struct({
   projectId: ProjectId,
   objectId: BoardObjectId,
   expectedRevision: BoardRevision,
+  originatingThreadId: Schema.optional(ThreadId),
+  originatingTurnId: Schema.optional(TurnId),
+  originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingProviderKind: Schema.optional(TrimmedNonEmptyString),
+  originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
 
@@ -303,6 +356,7 @@ export const BoardCreateFileReferenceCommand = Schema.Struct({
   originatingThreadId: Schema.optional(ThreadId),
   originatingTurnId: Schema.optional(TurnId),
   originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingProviderKind: Schema.optional(TrimmedNonEmptyString),
   originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
@@ -318,6 +372,7 @@ export const BoardCreateDiagramShapeCommand = Schema.Struct({
   originatingThreadId: Schema.optional(ThreadId),
   originatingTurnId: Schema.optional(TurnId),
   originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingProviderKind: Schema.optional(TrimmedNonEmptyString),
   originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
@@ -333,6 +388,7 @@ export const BoardCreateGroupCommand = Schema.Struct({
   originatingThreadId: Schema.optional(ThreadId),
   originatingTurnId: Schema.optional(TurnId),
   originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingProviderKind: Schema.optional(TrimmedNonEmptyString),
   originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
@@ -349,6 +405,7 @@ export const BoardCreateRelationshipCommand = Schema.Struct({
   originatingThreadId: Schema.optional(ThreadId),
   originatingTurnId: Schema.optional(TurnId),
   originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingProviderKind: Schema.optional(TrimmedNonEmptyString),
   originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
@@ -361,6 +418,11 @@ export const BoardUpdateRelationshipCommand = Schema.Struct({
   label: Schema.optional(Schema.NullOr(Schema.String)),
   tombstoned: Schema.optional(Schema.Boolean),
   expectedRevision: BoardRevision,
+  originatingThreadId: Schema.optional(ThreadId),
+  originatingTurnId: Schema.optional(TurnId),
+  originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingProviderKind: Schema.optional(TrimmedNonEmptyString),
+  originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
 
@@ -451,7 +513,16 @@ export const BoardBatchCommand = Schema.Struct({
   originatingThreadId: ThreadId,
   originatingTurnId: Schema.optional(TurnId),
   originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingProviderKind: Schema.optional(TrimmedNonEmptyString),
   originatingOperationId: Schema.optional(CommandId),
+  createdAt: IsoDateTime,
+});
+
+export const BoardUndoOperationCommand = Schema.Struct({
+  type: Schema.Literal("board.operation.undo"),
+  commandId: CommandId,
+  projectId: ProjectId,
+  operationId: CommandId,
   createdAt: IsoDateTime,
 });
 
@@ -473,6 +544,7 @@ export const BoardCommand = Schema.Union([
   BoardSetThreadAuthorityCommand,
   BoardSetProjectAuthorityCommand,
   BoardBatchCommand,
+  BoardUndoOperationCommand,
 ]);
 export type BoardCommand = typeof BoardCommand.Type;
 

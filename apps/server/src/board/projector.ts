@@ -9,7 +9,8 @@ export function projectBoardEvent(
   if (
     event.type === "board.relationship-created" ||
     event.type === "board.grant-updated" ||
-    event.type === "board.authority-updated"
+    event.type === "board.authority-updated" ||
+    event.type === "board.activity-updated"
   ) {
     return objects;
   }

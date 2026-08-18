@@ -71,6 +71,18 @@ export function applyBoardStreamItem(
   if (item.kind === "authority-upserted") {
     return { ...current, sequence: item.sequence, authority: item.authority };
   }
+  if (item.kind === "activity-upserted") {
+    return {
+      ...current,
+      sequence: item.sequence,
+      activities: [
+        item.activity,
+        ...(current.activities ?? []).filter(
+          (activity) => activity.operationId !== item.activity.operationId,
+        ),
+      ],
+    };
+  }
   return {
     ...current,
     sequence: item.sequence,
@@ -258,6 +270,11 @@ export function createEnvironmentBoardAtoms<R, E>(
     execute: (input: SetBoardProjectAuthorityInput) => setBoardProjectAuthority(input),
     scheduler,
   });
+  const undoOperation = createEnvironmentCommand(runtime, {
+    label: "environment-data:commands:board:undo-operation",
+    execute: (input: UndoBoardOperationInput) => undoBoardOperation(input),
+    scheduler,
+  });
   return {
     stateAtom,
     stateValueAtom,
@@ -277,6 +294,7 @@ export function createEnvironmentBoardAtoms<R, E>(
     setGrant,
     setAuthority,
     setProjectAuthority,
+    undoOperation,
   };
 }
 
@@ -708,6 +726,27 @@ export const setBoardProjectAuthority = Effect.fn("BoardCommands.setProjectAutho
     projectId: input.projectId,
     defaultReadScope: input.defaultReadScope,
     defaultWriteAuthority: input.defaultWriteAuthority,
+    createdAt: DateTime.formatIso(yield* DateTime.now),
+  });
+});
+
+export interface UndoBoardOperationInput {
+  readonly projectId: ProjectId;
+  readonly operationId: CommandId;
+  readonly commandId?: CommandId;
+}
+
+export const undoBoardOperation = Effect.fn("BoardCommands.undoOperation")(function* (
+  input: UndoBoardOperationInput,
+) {
+  const crypto = yield* Crypto.Crypto;
+  const commandId =
+    input.commandId ?? (yield* crypto.randomUUIDv4.pipe(Effect.orDie, Effect.map(CommandId.make)));
+  return yield* request(BOARD_WS_METHODS.dispatchCommand, {
+    type: "board.operation.undo",
+    commandId,
+    projectId: input.projectId,
+    operationId: input.operationId,
     createdAt: DateTime.formatIso(yield* DateTime.now),
   });
 });

@@ -117,6 +117,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
   const setTombstoned = useAtomCommand(environmentBoards.setTombstoned, {
     reportFailure: false,
   });
+  const undoOperation = useAtomCommand(environmentBoards.undoOperation, { reportFailure: false });
   const cameraStorageKey = `t3code:board-camera:v1:${environmentId}:${projectId}`;
   const activeThreadStorageKey = `t3code:board-active-thread:v1:${environmentId}:${projectId}`;
   const selectionStorageKey = `t3code:board-selection:v1:${environmentId}:${projectId}`;
@@ -1170,6 +1171,42 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
         onSelect={focusObject}
         onSearchResults={setSearchResultIds}
       />
+
+      {(board.snapshot?.activities?.length ?? 0) > 0 ? (
+        <aside
+          className="absolute bottom-4 right-4 z-20 w-72 rounded-xl border border-border bg-background/92 p-2 shadow-lg backdrop-blur-md"
+          aria-label="Recent board activity"
+        >
+          <h2 className="px-2 py-1 text-xs font-semibold text-foreground">Recent agent activity</h2>
+          <ol className="space-y-1">
+            {board.snapshot?.activities?.slice(0, 5).map((activity) => (
+              <li
+                key={activity.operationId}
+                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-muted-foreground"
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  {activity.originatingProviderKind ?? activity.originatingProviderInstanceId} ·{" "}
+                  {activity.summary}
+                </span>
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  disabled={activity.undoneAt !== null}
+                  aria-label={`Undo ${activity.summary}`}
+                  onClick={() =>
+                    void undoOperation({
+                      environmentId,
+                      input: { projectId, operationId: activity.operationId },
+                    })
+                  }
+                >
+                  <Undo2Icon />
+                </Button>
+              </li>
+            ))}
+          </ol>
+        </aside>
+      ) : null}
 
       <div className="pointer-events-none absolute inset-0 z-10" aria-label="Off-screen activity">
         {offscreenRunningThreads.map(({ object, left, top }) => {

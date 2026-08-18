@@ -1,4 +1,11 @@
-import { BoardObjectId, CommandId, ProjectId, ThreadId } from "@t3tools/contracts";
+import {
+  BoardObjectId,
+  CommandId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  TurnId,
+} from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -200,6 +207,10 @@ it.layer(TestLayer)("BoardService", (it) => {
         commandId: CommandId.make("atomic-board-edit"),
         projectId,
         originatingThreadId: ThreadId.make("thread-2"),
+        originatingTurnId: TurnId.make("turn-board-batch"),
+        originatingProviderInstanceId: ProviderInstanceId.make("codex"),
+        originatingProviderKind: "codex",
+        originatingOperationId: CommandId.make("atomic-board-edit"),
         createdAt: "2026-08-17T00:08:00.000Z",
         operations: [
           {
@@ -223,6 +234,24 @@ it.layer(TestLayer)("BoardService", (it) => {
         afterBatch.objects.find((object) => object.id === batchNoteId),
         { kind: "text-note", text: "created and revised", revision: 2 },
       );
+      assert.deepInclude(afterBatch.activities?.[0], {
+        operationId: CommandId.make("atomic-board-edit"),
+        originatingThreadId: ThreadId.make("thread-2"),
+        originatingProviderKind: "codex",
+        undoneAt: null,
+      });
+      yield* board.dispatch({
+        type: "board.operation.undo",
+        commandId: CommandId.make("undo-atomic-board-edit"),
+        projectId,
+        operationId: CommandId.make("atomic-board-edit"),
+        createdAt: "2026-08-17T00:08:15.000Z",
+      });
+      const afterUndo = yield* board.getSnapshot(projectId);
+      assert.ok(
+        afterUndo.objects.find((object) => object.id === batchNoteId)?.tombstonedAt !== null,
+      );
+      assert.strictEqual(afterUndo.activities?.[0]?.undoneAt, "2026-08-17T00:08:15.000Z");
       const privateShapeId = BoardObjectId.make("shape:future-private");
       yield* board.dispatch({
         type: "board.diagram-shape.create",

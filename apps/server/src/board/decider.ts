@@ -4,6 +4,7 @@ import {
   BoardRelationshipId,
   BOARD_WHOLE_BOARD_OBJECT_ID,
   type BoardCommand,
+  type BoardActivity,
   type BoardGrant,
   type BoardObject,
   type BoardPoint,
@@ -59,6 +60,13 @@ export type BoardDomainEvent =
       readonly commandId: BoardCommand["commandId"];
       readonly occurredAt: string;
       readonly authority: BoardProjectAuthority;
+    }
+  | {
+      readonly type: "board.activity-updated";
+      readonly projectId: ProjectId;
+      readonly commandId: BoardCommand["commandId"];
+      readonly occurredAt: string;
+      readonly activity: BoardActivity;
     };
 
 export interface BoardDecisionState {
@@ -80,6 +88,7 @@ const provenance = (
       originatingThreadId: ThreadId | undefined;
       originatingTurnId: TurnId | undefined;
       originatingProviderInstanceId: ProviderInstanceId | undefined;
+      originatingProviderKind: string | undefined;
       originatingOperationId: BoardCommand["commandId"] | undefined;
     }>
   >,
@@ -93,6 +102,9 @@ const provenance = (
   ...(command.originatingProviderInstanceId === undefined
     ? {}
     : { originatingProviderInstanceId: command.originatingProviderInstanceId }),
+  ...(command.originatingProviderKind === undefined
+    ? {}
+    : { originatingProviderKind: command.originatingProviderKind }),
   ...(command.originatingOperationId === undefined
     ? {}
     : { originatingOperationId: command.originatingOperationId }),
@@ -123,6 +135,9 @@ export function decideBoardCommand(
                 ? {}
                 : { originatingProviderInstanceId: command.originatingProviderInstanceId }),
               originatingOperationId: command.originatingOperationId ?? command.commandId,
+              ...(command.originatingProviderKind === undefined
+                ? {}
+                : { originatingProviderKind: command.originatingProviderKind }),
               createdAt: command.createdAt,
             }
           : operation.type === "shape.create"
@@ -139,6 +154,9 @@ export function decideBoardCommand(
                   ? {}
                   : { originatingProviderInstanceId: command.originatingProviderInstanceId }),
                 originatingOperationId: command.originatingOperationId ?? command.commandId,
+                ...(command.originatingProviderKind === undefined
+                  ? {}
+                  : { originatingProviderKind: command.originatingProviderKind }),
                 createdAt: command.createdAt,
               }
             : operation.type === "object.move"
@@ -173,6 +191,9 @@ export function decideBoardCommand(
                             originatingProviderInstanceId: command.originatingProviderInstanceId,
                           }),
                       originatingOperationId: command.originatingOperationId ?? command.commandId,
+                      ...(command.originatingProviderKind === undefined
+                        ? {}
+                        : { originatingProviderKind: command.originatingProviderKind }),
                       createdAt: command.createdAt,
                     }
                   : {
@@ -891,4 +912,72 @@ export function decideBoardCommand(
       revision: object.revision + 1,
     },
   ];
+}
+
+export interface BoardOperationPreimage {
+  readonly objects: ReadonlyArray<{
+    readonly objectId: BoardObjectId;
+    readonly object: BoardObject | null;
+  }>;
+  readonly relationships: ReadonlyArray<{
+    readonly relationshipId: BoardRelationshipId;
+    readonly relationship: BoardRelationship | null;
+  }>;
+}
+
+export function decideBoardUndo(
+  command: Extract<BoardCommand, { readonly type: "board.operation.undo" }>,
+  state: BoardDecisionState,
+  preimage: BoardOperationPreimage,
+): ReadonlyArray<BoardDomainEvent> {
+  const events: BoardDomainEvent[] = [];
+  for (const entry of preimage.objects) {
+    const current = state.objects.find((object) => object.id === entry.objectId);
+    if (!current) continue;
+    events.push({
+      type: "board.object-updated",
+      projectId: command.projectId,
+      commandId: command.commandId,
+      occurredAt: command.createdAt,
+      object:
+        entry.object === null
+          ? {
+              ...current,
+              revision: current.revision + 1,
+              updatedAt: command.createdAt,
+              tombstonedAt: command.createdAt,
+            }
+          : {
+              ...entry.object,
+              revision: current.revision + 1,
+              updatedAt: command.createdAt,
+            },
+    });
+  }
+  for (const entry of preimage.relationships) {
+    const current = (state.relationships ?? []).find(
+      (relationship) => relationship.id === entry.relationshipId,
+    );
+    if (!current) continue;
+    events.push({
+      type: "board.relationship-created",
+      projectId: command.projectId,
+      commandId: command.commandId,
+      occurredAt: command.createdAt,
+      relationship:
+        entry.relationship === null
+          ? {
+              ...current,
+              revision: current.revision + 1,
+              updatedAt: command.createdAt,
+              tombstonedAt: command.createdAt,
+            }
+          : {
+              ...entry.relationship,
+              revision: current.revision + 1,
+              updatedAt: command.createdAt,
+            },
+    });
+  }
+  return events;
 }
