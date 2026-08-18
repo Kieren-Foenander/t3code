@@ -4,9 +4,12 @@ import * as Schema from "effect/Schema";
 
 import { BoardCommand, BoardSnapshot } from "./board.ts";
 
+const decodeBoardCommand = Schema.decodeUnknownEffect(BoardCommand);
+const decodeBoardSnapshot = Schema.decodeUnknownEffect(BoardSnapshot);
+
 it.effect("decodes a revision-aware board move command", () =>
   Effect.gen(function* () {
-    const command = yield* Schema.decodeUnknownEffect(BoardCommand)({
+    const command = yield* decodeBoardCommand({
       type: "board.object.move",
       commandId: "move-1",
       projectId: "project-1",
@@ -23,7 +26,7 @@ it.effect("decodes a revision-aware board move command", () =>
 
 it.effect("decodes spatial thread placement with provenance", () =>
   Effect.gen(function* () {
-    const command = yield* Schema.decodeUnknownEffect(BoardCommand)({
+    const command = yield* decodeBoardCommand({
       type: "board.thread-frame.place",
       commandId: "place-1",
       projectId: "project-1",
@@ -38,7 +41,7 @@ it.effect("decodes spatial thread placement with provenance", () =>
 
 it.effect("decodes an isolated board snapshot", () =>
   Effect.gen(function* () {
-    const snapshot = yield* Schema.decodeUnknownEffect(BoardSnapshot)({
+    const snapshot = yield* decodeBoardSnapshot({
       projectId: "project-1",
       sequence: 2,
       objects: [
@@ -72,7 +75,7 @@ it.effect("decodes an isolated board snapshot", () =>
 it.effect("rejects non-positive board object dimensions", () =>
   Effect.gen(function* () {
     const result = yield* Effect.result(
-      Schema.decodeUnknownEffect(BoardSnapshot)({
+      decodeBoardSnapshot({
         projectId: "project-1",
         sequence: 0,
         objects: [
@@ -106,7 +109,7 @@ it.effect("rejects non-positive board object dimensions", () =>
 
 it.effect("decodes revision-aware artifact and relationship edits", () =>
   Effect.gen(function* () {
-    const resize = yield* Schema.decodeUnknownEffect(BoardCommand)({
+    const resize = yield* decodeBoardCommand({
       type: "board.object.update",
       commandId: "resize-1",
       projectId: "project-1",
@@ -116,7 +119,7 @@ it.effect("decodes revision-aware artifact and relationship edits", () =>
       expectedRevision: 4,
       createdAt: "2026-08-17T00:00:00.000Z",
     });
-    const relationship = yield* Schema.decodeUnknownEffect(BoardCommand)({
+    const relationship = yield* decodeBoardCommand({
       type: "board.relationship.update",
       commandId: "relationship-1",
       projectId: "project-1",
