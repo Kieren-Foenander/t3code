@@ -75,6 +75,8 @@ const claudeAgentInstanceId = ProviderInstanceId.make("claudeAgent");
 const CODEX_DRIVER = ProviderDriverKind.make("codex");
 const CLAUDE_AGENT_DRIVER = ProviderDriverKind.make("claudeAgent");
 const CURSOR_DRIVER = ProviderDriverKind.make("cursor");
+const GROK_DRIVER = ProviderDriverKind.make("grok");
+const OPENCODE_DRIVER = ProviderDriverKind.make("opencode");
 
 type LegacyProviderRuntimeEvent = {
   readonly type: string;
@@ -1962,13 +1964,18 @@ validation.layer("ProviderServiceLive validation", (it) => {
 describe("agent browser access", () => {
   const revokedThreads: Array<ThreadId> = [];
 
-  const startSessionWith = (enableAgentBrowserAccess: boolean, threadId: ThreadId) =>
+  const startSessionWith = (
+    enableAgentBrowserAccess: boolean,
+    threadId: ThreadId,
+    driver = CODEX_DRIVER,
+  ) =>
     Effect.gen(function* () {
       const issued: Array<McpSessionRegistry.McpCredentialRequest> = [];
-      const codex = makeFakeCodexAdapter();
+      const adapter = makeFakeCodexAdapter(driver);
+      const providerInstanceId = ProviderInstanceId.make(driver);
       const providerAdapterLayer = Layer.succeed(
         ProviderAdapterRegistry.ProviderAdapterRegistry,
-        makeAdapterRegistryMock({ [CODEX_DRIVER]: codex.adapter }),
+        makeAdapterRegistryMock({ [driver]: adapter.adapter }),
       );
       const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
         Layer.provide(SqlitePersistenceMemory),
@@ -2000,8 +2007,8 @@ describe("agent browser access", () => {
       yield* Effect.gen(function* () {
         const provider = yield* ProviderService.ProviderService;
         return yield* provider.startSession(threadId, {
-          provider: CODEX_DRIVER,
-          providerInstanceId: codexInstanceId,
+          provider: driver,
+          providerInstanceId,
           threadId,
           runtimeMode: "full-access",
         });
@@ -2019,6 +2026,23 @@ describe("agent browser access", () => {
 
       assert.equal(issued[0]?.threadId, asThreadId("thread-browser-off"));
       assert.deepEqual(issued[0]?.capabilities, new Set(["board"]));
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("attaches the common board toolkit to every built-in provider", () =>
+    Effect.gen(function* () {
+      for (const driver of [
+        CODEX_DRIVER,
+        CLAUDE_AGENT_DRIVER,
+        CURSOR_DRIVER,
+        GROK_DRIVER,
+        OPENCODE_DRIVER,
+      ]) {
+        const threadId = asThreadId(`thread-board-${driver}`);
+        const issued = yield* startSessionWith(false, threadId, driver);
+        assert.equal(issued[0]?.providerInstanceId, ProviderInstanceId.make(driver));
+        assert.deepEqual(issued[0]?.capabilities, new Set(["board"]));
+      }
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
