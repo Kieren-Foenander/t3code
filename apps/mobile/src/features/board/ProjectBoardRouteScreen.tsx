@@ -10,6 +10,7 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useEnvironmentBoard } from "../../state/board";
 import { useProject, useThreadShells } from "../../state/entities";
 import { mobileBoardContentSize, mobileThreadBoardStatus } from "./boardLayout";
+import { useArchivedThreadSnapshots } from "../archive/useArchivedThreadSnapshots";
 
 type Props = StaticScreenProps<{ environmentId: string; projectId: string }>;
 
@@ -23,6 +24,7 @@ export function ProjectBoardRouteScreen({ route }: Props) {
   const board = useEnvironmentBoard(environmentId, projectId);
   const project = useProject(scopeProjectRef(environmentId, projectId));
   const threads = useThreadShells();
+  const { snapshots: archivedSnapshots } = useArchivedThreadSnapshots([environmentId]);
   const key = `${environmentId}:${projectId}`;
   const viewport = useWindowDimensions();
   const [selectedObjectId, setSelectedObjectId] = useState(
@@ -31,14 +33,21 @@ export function ProjectBoardRouteScreen({ route }: Props) {
   const objects = board.snapshot?.objects.filter((object) => object.tombstonedAt === null) ?? [];
   const threadsById = useMemo(
     () =>
-      new Map(
-        threads
+      new Map([
+        ...archivedSnapshots.flatMap((entry) =>
+          entry.environmentId === environmentId
+            ? entry.snapshot.threads
+                .filter((thread) => thread.projectId === projectId)
+                .map((thread) => [thread.id, { ...thread, environmentId }] as const)
+            : [],
+        ),
+        ...threads
           .filter(
             (thread) => thread.environmentId === environmentId && thread.projectId === projectId,
           )
           .map((thread) => [thread.id, thread] as const),
-      ),
-    [environmentId, projectId, threads],
+      ]),
+    [archivedSnapshots, environmentId, projectId, threads],
   );
   const { width, height } = mobileBoardContentSize(objects, viewport);
   const initialCamera = cameraByBoard.get(key) ?? { x: 0, y: 0 };

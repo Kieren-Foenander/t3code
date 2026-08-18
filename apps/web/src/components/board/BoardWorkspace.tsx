@@ -67,6 +67,7 @@ import { BoardNoteCard } from "./BoardNoteCard";
 import { BoardFileReferenceCard } from "./BoardFileReferenceCard";
 import { BoardOutline } from "./BoardOutline";
 import { randomUUID } from "../../lib/utils";
+import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
 
 interface BoardWorkspaceProps {
   readonly environmentId: EnvironmentId;
@@ -86,6 +87,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
   const board = useEnvironmentBoard(environmentId, projectId);
   const projects = useProjects();
   const threads = useThreadShells();
+  const { snapshots: archivedSnapshots } = useArchivedThreadSnapshots([environmentId]);
   const serverConfigs = useServerConfigs();
   const handleNewThread = useNewThreadHandler();
   const moveObject = useAtomCommand(environmentBoards.move, { reportFailure: false });
@@ -245,17 +247,19 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
   const project = projects.find(
     (candidate) => candidate.environmentId === environmentId && candidate.id === projectId,
   );
-  const threadsById = useMemo(
-    () =>
-      new Map(
-        threads
-          .filter(
-            (thread) => thread.environmentId === environmentId && thread.projectId === projectId,
-          )
-          .map((thread) => [thread.id, thread] as const),
-      ),
-    [environmentId, projectId, threads],
-  );
+  const threadsById = useMemo(() => {
+    const active = threads
+      .filter((thread) => thread.environmentId === environmentId && thread.projectId === projectId)
+      .map((thread) => [thread.id, thread] as const);
+    const archived = archivedSnapshots.flatMap((entry) =>
+      entry.environmentId === environmentId
+        ? entry.snapshot.threads
+            .filter((thread) => thread.projectId === projectId)
+            .map((thread) => [thread.id, { ...thread, environmentId }] as const)
+        : [],
+    );
+    return new Map([...archived, ...active]);
+  }, [archivedSnapshots, environmentId, projectId, threads]);
   const draftFrames = useMemo(
     () =>
       Object.entries(draftThreadsById)
@@ -277,7 +281,9 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
         object.kind === "thread-frame" && object.tombstonedAt === null ? [object.threadId] : [],
       ),
     );
-    if ([...threadsById.keys()].some((threadId) => !framed.has(threadId))) {
+    if (
+      [...threadsById].some(([threadId, thread]) => !thread.archivedAt && !framed.has(threadId))
+    ) {
       void ensureThreadFrames({ environmentId, input: { projectId } });
     }
   }, [
