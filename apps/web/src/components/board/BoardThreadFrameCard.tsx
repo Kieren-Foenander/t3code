@@ -19,6 +19,8 @@ interface BoardThreadFrameCardProps {
   readonly zoom: number;
   readonly thread: EnvironmentThreadShell | undefined;
   readonly active: boolean;
+  readonly dimmed?: boolean;
+  readonly artifactCount: number;
   readonly onActivate: () => void;
   readonly onDwell: () => void;
   readonly onDwellEnd: () => void;
@@ -41,6 +43,8 @@ export function BoardThreadFrameCard({
   zoom,
   thread,
   active,
+  dimmed = false,
+  artifactCount,
   onActivate,
   onDwell,
   onDwellEnd,
@@ -81,7 +85,9 @@ export function BoardThreadFrameCard({
         width: object.size.width,
         height: object.size.height,
         transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
+        opacity: dimmed ? 0.2 : 1,
       }}
+      data-board-thread-id={object.threadId}
       aria-label={`Thread: ${thread?.title ?? object.threadId}`}
       aria-current={active ? "true" : undefined}
       onPointerEnter={() => {
@@ -105,6 +111,9 @@ export function BoardThreadFrameCard({
                   ? "Complete"
                   : "Waiting"}
             </p>
+            {!active && thread?.updatedAt ? (
+              <span className="text-[10px] font-medium text-primary">Updated</span>
+            ) : null}
           </div>
           <Button
             render={
@@ -129,8 +138,10 @@ export function BoardThreadFrameCard({
               <span className="inline-flex items-center gap-2">
                 <LoaderCircleIcon className="size-4" /> Running
               </span>
+            ) : thread?.latestTurn?.state === "error" ? (
+              "Latest turn failed"
             ) : thread?.settledAt ? (
-              "Completed"
+              "Latest turn completed"
             ) : (
               "Waiting"
             )}
@@ -138,13 +149,21 @@ export function BoardThreadFrameCard({
         ) : level === "summary" ? (
           <div className="flex flex-1 flex-col justify-center gap-3 px-6 text-sm text-muted-foreground">
             <p className="text-foreground">
-              {thread?.session?.status === "running"
-                ? "Agent is working"
-                : thread?.settledAt
-                  ? "Latest work is complete"
-                  : "Ready for the next prompt"}
+              {thread?.planProgress
+                ? `${thread.planProgress.step} (${thread.planProgress.completedSteps}/${thread.planProgress.totalSteps})`
+                : thread?.session?.status === "running"
+                  ? "Agent is working"
+                  : thread?.settledAt
+                    ? "Latest work is complete"
+                    : "Ready for the next prompt"}
             </p>
+            {thread?.hasPendingApprovals || thread?.hasPendingUserInput ? (
+              <p className="text-xs font-medium text-amber-600">Blocked on user input</p>
+            ) : null}
             {thread?.branch ? <p className="truncate font-mono text-xs">{thread.branch}</p> : null}
+            <p className="text-xs">
+              {artifactCount} board artifact{artifactCount === 1 ? "" : "s"}
+            </p>
             <p className="text-xs">Zoom closer to open the live timeline.</p>
           </div>
         ) : (

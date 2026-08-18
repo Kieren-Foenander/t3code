@@ -26,6 +26,8 @@ import {
   UnlinkIcon,
   Undo2Icon,
   WorkflowIcon,
+  PencilIcon,
+  ScalingIcon,
 } from "lucide-react";
 import {
   useCallback,
@@ -53,6 +55,7 @@ import {
   boardObjectIntersectsViewport,
   clampBoardZoom,
   fitBoardCamera,
+  pinchBoardCamera,
   shouldStartBoardPan,
   zoomBoardCameraAtPoint,
   type BoardCamera as BoardCameraState,
@@ -102,6 +105,10 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
   const createRelationship = useAtomCommand(environmentBoards.createRelationship, {
     reportFailure: false,
   });
+  const updateRelationship = useAtomCommand(environmentBoards.updateRelationship, {
+    reportFailure: false,
+  });
+  const updateObject = useAtomCommand(environmentBoards.updateObject, { reportFailure: false });
   const setGrant = useAtomCommand(environmentBoards.setGrant, { reportFailure: false });
   const setAuthority = useAtomCommand(environmentBoards.setAuthority, { reportFailure: false });
   const setTombstoned = useAtomCommand(environmentBoards.setTombstoned, {
@@ -109,6 +116,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
   });
   const cameraStorageKey = `t3code:board-camera:v1:${environmentId}:${projectId}`;
   const activeThreadStorageKey = `t3code:board-active-thread:v1:${environmentId}:${projectId}`;
+  const selectionStorageKey = `t3code:board-selection:v1:${environmentId}:${projectId}`;
   const [camera, setCamera] = useState<BoardCameraState>(() => {
     try {
       return getLocalStorageItem(cameraStorageKey, BoardCamera) ?? { x: 72, y: 72, zoom: 0.85 };
@@ -129,6 +137,12 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
     startClient: BoardPoint;
     startCamera: BoardCameraState;
   } | null>(null);
+  const touchPointsRef = useRef(new Map<number, BoardPoint>());
+  const pinchRef = useRef<{
+    readonly startDistance: number;
+    readonly startMidpoint: BoardPoint;
+    readonly startCamera: BoardCameraState;
+  } | null>(null);
   const spacePressedRef = useRef(false);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const dwellTimeoutRef = useRef<number | null>(null);
@@ -141,7 +155,17 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
   });
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [showDeleted, setShowDeleted] = useState(false);
-  const [selectedObjectId, setSelectedObjectId] = useState<BoardObjectId | null>(null);
+  const [selectedObjectId, setSelectedObjectId] = useState<BoardObjectId | null>(() => {
+    try {
+      return getLocalStorageItem(selectionStorageKey, BoardObjectId);
+    } catch {
+      return null;
+    }
+  });
+  const [selectedRelationshipId, setSelectedRelationshipId] = useState<BoardRelationshipId | null>(
+    null,
+  );
+  const [searchResultIds, setSearchResultIds] = useState<ReadonlySet<BoardObjectId> | null>(null);
   const [connectorSourceId, setConnectorSourceId] = useState<BoardObjectId | null>(null);
   const [followThreadId, setFollowThreadId] = useState<ThreadId | null>(null);
   const cameraBeforeFollowRef = useRef<BoardCameraState | null>(null);
@@ -165,20 +189,23 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
   }, [camera, cameraStorageKey]);
 
   useEffect(() => {
+    try {
+      if (selectedObjectId)
+        setLocalStorageItem(selectionStorageKey, selectedObjectId, BoardObjectId);
+      else removeLocalStorageItem(selectionStorageKey);
+    } catch {
+      // Presentation state persistence is best effort.
+    }
+  }, [selectedObjectId, selectionStorageKey]);
+
+  useEffect(() => {
     const editable = (target: EventTarget | null) =>
       target instanceof HTMLElement &&
       (target.matches("input, textarea, [contenteditable='true']") ||
         target.closest("[data-terminal], [data-approval-control]") !== null);
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === "Space" && !editable(event.target)) spacePressedRef.current = true;
-      if (event.key === "Escape" && !editable(event.target)) {
-        setActiveThreadId(null);
-        try {
-          removeLocalStorageItem(activeThreadStorageKey);
-        } catch {
-          // Presentation state persistence is best effort.
-        }
-      } else if (event.key === "Home" && !editable(event.target)) {
+      if (event.key === "Home" && !editable(event.target)) {
         const bounds = canvasRef.current?.getBoundingClientRect();
         if (bounds) setCamera(fitBoardCamera(board.snapshot?.objects ?? [], bounds));
       }
@@ -293,6 +320,20 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
       if (event.pointerType === "touch" && event.target !== event.currentTarget) return;
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
+      if (event.pointerType === "touch") {
+        touchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        const points = [...touchPointsRef.current.values()];
+        if (points.length === 2) {
+          const [first, second] = points as [BoardPoint, BoardPoint];
+          pinchRef.current = {
+            startDistance: Math.hypot(second.x - first.x, second.y - first.y),
+            startMidpoint: { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 },
+            startCamera: camera,
+          };
+          panRef.current = null;
+          return;
+        }
+      }
       panRef.current = {
         pointerId: event.pointerId,
         startClient: { x: event.clientX, y: event.clientY },
@@ -304,6 +345,26 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
 
   const onPointerMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.pointerType === "touch" && touchPointsRef.current.has(event.pointerId)) {
+        touchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        const points = [...touchPointsRef.current.values()];
+        if (points.length === 2 && pinchRef.current) {
+          const [first, second] = points as [BoardPoint, BoardPoint];
+          const midpoint = { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+          const distance = Math.hypot(second.x - first.x, second.y - first.y);
+          const pinch = pinchRef.current;
+          setCamera(
+            pinchBoardCamera({
+              startCamera: pinch.startCamera,
+              startMidpoint: pinch.startMidpoint,
+              currentMidpoint: midpoint,
+              startDistance: pinch.startDistance,
+              currentDistance: distance,
+            }),
+          );
+          return;
+        }
+      }
       const drag = dragRef.current;
       if (drag?.pointerId === event.pointerId) {
         setLocalPositions((current) => {
@@ -349,11 +410,32 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
             next.delete(drag.objectId);
             return next;
           });
+        } else {
+          const target = document
+            .elementsFromPoint(event.clientX, event.clientY)
+            .find((element) => element instanceof HTMLElement && element.dataset.boardThreadId);
+          const threadId =
+            target instanceof HTMLElement && target.dataset.boardThreadId
+              ? ThreadId.make(target.dataset.boardThreadId)
+              : null;
+          if (threadId && drag.objectId !== BoardObjectId.make(`thread:${threadId}`)) {
+            await setGrant({
+              environmentId,
+              input: {
+                projectId,
+                threadId,
+                objectIds: [drag.objectId],
+                access: "read",
+              },
+            });
+          }
         }
       }
       if (panRef.current?.pointerId === event.pointerId) panRef.current = null;
+      touchPointsRef.current.delete(event.pointerId);
+      if (touchPointsRef.current.size < 2) pinchRef.current = null;
     },
-    [environmentId, localPositions, moveObject, projectId],
+    [environmentId, localPositions, moveObject, projectId, setGrant],
   );
 
   const activateThread = useCallback(
@@ -585,6 +667,12 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
         "",
       );
       if (checkpointRef === null) return;
+      const lineRange = window.prompt("Line range (optional, for example 12-48)", "");
+      if (lineRange === null) return;
+      const match = lineRange.trim().match(/^(\d+)(?:-(\d+))?$/);
+      if (lineRange.trim() && !match) return;
+      const startLine = match ? Number(match[1]) : undefined;
+      const endLine = match ? Number(match[2] ?? match[1]) : undefined;
       await createFileReference({
         environmentId,
         input: {
@@ -592,6 +680,8 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
           objectId: BoardObjectId.make(`file:${randomUUID()}`),
           position,
           path: path.trim(),
+          ...(startLine === undefined ? {} : { startLine }),
+          ...(endLine === undefined ? {} : { endLine }),
           ...(checkpointRef.trim()
             ? { checkpointRef: CheckpointRef.make(checkpointRef.trim()) }
             : {}),
@@ -645,12 +735,20 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
       return;
     }
     if (connectorSourceId === selectedObjectId) return;
+    const relationshipKind = window.prompt(
+      "Relationship type: connector or blocked-by",
+      "connector",
+    );
+    if (relationshipKind !== "connector" && relationshipKind !== "blocked-by") return;
+    const label = window.prompt("Connector label (optional)", "");
+    if (label === null) return;
     await createRelationship({
       environmentId,
       input: {
         projectId,
         relationshipId: BoardRelationshipId.make(`connector:${randomUUID()}`),
-        kind: "connector",
+        kind: relationshipKind,
+        ...(label.trim() ? { label: label.trim() } : {}),
         sourceObjectId: connectorSourceId,
         targetObjectId: selectedObjectId,
       },
@@ -685,6 +783,11 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
         )
       : undefined;
   const selectedObject = selectedObjectId ? objectsById.get(selectedObjectId) : undefined;
+  const selectedRelationship = selectedRelationshipId
+    ? board.snapshot?.relationships.find(
+        (relationship) => relationship.id === selectedRelationshipId,
+      )
+    : undefined;
   const wholeBoardGrant = activeThreadId
     ? board.snapshot?.grants.find(
         (grant) =>
@@ -702,6 +805,114 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
         threadId: activeThreadId,
         access,
         revoked: wholeBoardGrant?.access === access,
+      },
+    });
+  };
+
+  const editSelectedObject = async () => {
+    if (!selectedObject) return;
+    if (selectedObject.kind === "thread-frame") {
+      const sizes = ["compact", "standard", "wide"] as const;
+      const next = sizes[(sizes.indexOf(selectedObject.frameSize) + 1) % sizes.length]!;
+      await updateObject({
+        environmentId,
+        input: {
+          projectId,
+          objectId: selectedObject.id,
+          expectedRevision: selectedObject.revision,
+          frameSize: next,
+        },
+      });
+      return;
+    }
+    if (selectedObject.kind === "diagram-shape") {
+      const label = window.prompt("Shape label", selectedObject.label);
+      if (label === null) return;
+      const shape = window.prompt(
+        "Shape type: rectangle, ellipse, or diamond",
+        selectedObject.shape,
+      );
+      if (shape !== "rectangle" && shape !== "ellipse" && shape !== "diamond") return;
+      await updateObject({
+        environmentId,
+        input: {
+          projectId,
+          objectId: selectedObject.id,
+          expectedRevision: selectedObject.revision,
+          label,
+          shape,
+        },
+      });
+      return;
+    }
+    if (selectedObject.kind === "group") {
+      const title = window.prompt("Group title", selectedObject.title);
+      if (!title?.trim()) return;
+      await updateObject({
+        environmentId,
+        input: {
+          projectId,
+          objectId: selectedObject.id,
+          expectedRevision: selectedObject.revision,
+          title: title.trim(),
+        },
+      });
+      return;
+    }
+    if (selectedObject.kind === "file-reference") {
+      const path = window.prompt("Project-relative path", selectedObject.path);
+      if (!path?.trim()) return;
+      const range = window.prompt(
+        "Line range (blank for all lines)",
+        selectedObject.startLine
+          ? `${selectedObject.startLine}-${selectedObject.endLine ?? selectedObject.startLine}`
+          : "",
+      );
+      if (range === null) return;
+      const match = range.trim().match(/^(\d+)(?:-(\d+))?$/);
+      if (range.trim() && !match) return;
+      await updateObject({
+        environmentId,
+        input: {
+          projectId,
+          objectId: selectedObject.id,
+          expectedRevision: selectedObject.revision,
+          path: path.trim(),
+          startLine: match ? Number(match[1]) : null,
+          endLine: match ? Number(match[2] ?? match[1]) : null,
+        },
+      });
+    }
+  };
+
+  const resizeSelectedObject = async () => {
+    if (!selectedObject) return;
+    const width = Number(window.prompt("Width", String(Math.round(selectedObject.size.width))));
+    if (!Number.isFinite(width) || width <= 0) return;
+    const height = Number(window.prompt("Height", String(Math.round(selectedObject.size.height))));
+    if (!Number.isFinite(height) || height <= 0) return;
+    await updateObject({
+      environmentId,
+      input: {
+        projectId,
+        objectId: selectedObject.id,
+        expectedRevision: selectedObject.revision,
+        size: { width, height },
+      },
+    });
+  };
+
+  const editSelectedRelationship = async () => {
+    if (!selectedRelationship) return;
+    const label = window.prompt("Connector label", selectedRelationship.label ?? "");
+    if (label === null) return;
+    await updateRelationship({
+      environmentId,
+      input: {
+        projectId,
+        relationshipId: selectedRelationship.id,
+        expectedRevision: selectedRelationship.revision,
+        label: label.trim() ? label : null,
       },
     });
   };
@@ -769,6 +980,26 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
             onClick={() => void connectSelected()}
           >
             <WorkflowIcon /> {connectorSourceId ? "To…" : "Connect"}
+          </Button>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            disabled={!selectedObject && !selectedRelationship}
+            aria-label="Edit selected board item"
+            onClick={() =>
+              void (selectedRelationship ? editSelectedRelationship() : editSelectedObject())
+            }
+          >
+            <PencilIcon />
+          </Button>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            disabled={!selectedObject}
+            aria-label="Resize selected board object"
+            onClick={() => void resizeSelectedObject()}
+          >
+            <ScalingIcon />
           </Button>
           <Button
             size="sm"
@@ -890,6 +1121,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
         selectedObjectId={selectedObjectId}
         showDeleted={showDeleted}
         onSelect={focusObject}
+        onSearchResults={setSearchResultIds}
       />
 
       <div className="pointer-events-none absolute inset-0 z-10" aria-label="Off-screen activity">
@@ -951,6 +1183,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
                   width: object.size.width,
                   height: object.size.height,
                   transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
+                  opacity: searchResultIds && !searchResultIds.has(object.id) ? 0.2 : 1,
                 }}
                 aria-label={`Group: ${object.title}`}
                 onClick={() => setSelectedObjectId(object.id)}
@@ -983,6 +1216,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
               const sourcePosition = localPositions.get(source.id) ?? source.position;
               const targetPosition = localPositions.get(target.id) ?? target.position;
               const emphasized =
+                selectedRelationshipId === relationship.id ||
                 selectedObjectId === source.id ||
                 selectedObjectId === target.id ||
                 (source.kind === "thread-frame" && source.threadId === activeThreadId) ||
@@ -990,6 +1224,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
               return (
                 <g key={relationship.id} opacity={emphasized ? 0.9 : 0.16}>
                   <line
+                    className="pointer-events-auto cursor-pointer"
                     x1={sourcePosition.x + source.size.width / 2}
                     y1={sourcePosition.y + source.size.height / 2}
                     x2={targetPosition.x + target.size.width / 2}
@@ -997,7 +1232,50 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
                     stroke="currentColor"
                     strokeWidth={relationship.kind === "connector" ? 2 : 3}
                     strokeDasharray={relationship.kind === "blocked-by" ? "8 6" : undefined}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedObjectId(null);
+                      setSelectedRelationshipId(relationship.id);
+                    }}
+                    onDoubleClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedRelationshipId(relationship.id);
+                      const label = window.prompt("Connector label", relationship.label ?? "");
+                      if (label === null) return;
+                      void updateRelationship({
+                        environmentId,
+                        input: {
+                          projectId,
+                          relationshipId: relationship.id,
+                          expectedRevision: relationship.revision,
+                          label: label.trim() ? label : null,
+                        },
+                      });
+                    }}
                   />
+                  {relationship.label ? (
+                    <text
+                      x={
+                        (sourcePosition.x +
+                          source.size.width / 2 +
+                          targetPosition.x +
+                          target.size.width / 2) /
+                        2
+                      }
+                      y={
+                        (sourcePosition.y +
+                          source.size.height / 2 +
+                          targetPosition.y +
+                          target.size.height / 2) /
+                          2 -
+                        8
+                      }
+                      textAnchor="middle"
+                      className="fill-current text-xs"
+                    >
+                      {relationship.label}
+                    </text>
+                  ) : null}
                 </g>
               );
             })}
@@ -1031,8 +1309,12 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
                   transform: `translate3d(${position.x}px, ${position.y}px, 0)${
                     object.shape === "diamond" ? " rotate(45deg)" : ""
                   }`,
+                  opacity: searchResultIds && !searchResultIds.has(object.id) ? 0.2 : 1,
                 }}
-                onClick={() => setSelectedObjectId(object.id)}
+                onClick={() => {
+                  setSelectedRelationshipId(null);
+                  setSelectedObjectId(object.id);
+                }}
                 onPointerDown={(event) => {
                   if (event.button !== 0) return;
                   event.stopPropagation();
@@ -1066,6 +1348,15 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
                 zoom={camera.zoom}
                 thread={thread}
                 active={activeThreadId === object.threadId}
+                dimmed={Boolean(searchResultIds && !searchResultIds.has(object.id))}
+                artifactCount={
+                  objects.filter(
+                    (candidate) =>
+                      candidate.kind !== "thread-frame" &&
+                      candidate.originatingThreadId === object.threadId &&
+                      candidate.tombstonedAt === null,
+                  ).length
+                }
                 onActivate={() => {
                   activateThread(object.threadId);
                   setSelectedObjectId(object.id);
@@ -1119,6 +1410,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
                 object={object}
                 position={position}
                 {...(access === undefined ? {} : { access })}
+                dimmed={Boolean(searchResultIds && !searchResultIds.has(object.id))}
                 onSelect={() => setSelectedObjectId(object.id)}
                 onDragStart={(event) => {
                   if (event.button !== 0 || object.tombstonedAt !== null) return;
@@ -1156,6 +1448,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
                     object={object}
                     position={position}
                     {...(access === undefined ? {} : { access })}
+                    dimmed={Boolean(searchResultIds && !searchResultIds.has(object.id))}
                     onSelect={() => setSelectedObjectId(object.id)}
                     onDragStart={(event) => {
                       if (event.button !== 0) return;

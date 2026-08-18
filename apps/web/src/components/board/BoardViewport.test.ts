@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   boardObjectIntersectsViewport,
   fitBoardCamera,
+  pinchBoardCamera,
   shouldStartBoardPan,
   zoomBoardCameraAtPoint,
 } from "./BoardViewport";
@@ -14,6 +15,17 @@ describe("board viewport", () => {
     const next = zoomBoardCameraAtPoint(camera, { x: 240, y: 260 }, 1.5);
     expect((240 - next.x) / next.zoom).toBe(200);
     expect((260 - next.y) / next.zoom).toBe(200);
+  });
+
+  it("combines two-finger pan and focal pinch zoom", () => {
+    const next = pinchBoardCamera({
+      startCamera: { x: 0, y: 0, zoom: 1 },
+      startMidpoint: { x: 100, y: 100 },
+      currentMidpoint: { x: 140, y: 120 },
+      startDistance: 100,
+      currentDistance: 150,
+    });
+    expect(next).toEqual({ x: -10, y: -30, zoom: 1.5 });
   });
 
   it("arbitrates frame dragging from space- and middle-button panning", () => {

@@ -30,6 +30,25 @@ export function zoomBoardCameraAtPoint(
   };
 }
 
+export function pinchBoardCamera(input: {
+  readonly startCamera: BoardCamera;
+  readonly startMidpoint: BoardPoint;
+  readonly currentMidpoint: BoardPoint;
+  readonly startDistance: number;
+  readonly currentDistance: number;
+}): BoardCamera {
+  const zoomed = zoomBoardCameraAtPoint(
+    input.startCamera,
+    input.startMidpoint,
+    input.startCamera.zoom * (input.currentDistance / Math.max(1, input.startDistance)),
+  );
+  return {
+    ...zoomed,
+    x: zoomed.x + input.currentMidpoint.x - input.startMidpoint.x,
+    y: zoomed.y + input.currentMidpoint.y - input.startMidpoint.y,
+  };
+}
+
 export function fitBoardCamera(
   objects: ReadonlyArray<BoardObject>,
   viewport: { readonly width: number; readonly height: number },

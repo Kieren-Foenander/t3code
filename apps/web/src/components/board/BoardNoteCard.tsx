@@ -1,5 +1,5 @@
 import type { BoardPoint, BoardTextNote, EnvironmentId } from "@t3tools/contracts";
-import { ArchiveRestoreIcon, SaveIcon, Trash2Icon } from "lucide-react";
+import { ArchiveRestoreIcon, SaveIcon, SparklesIcon, Trash2Icon } from "lucide-react";
 import { useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 import { environmentBoards } from "../../state/board";
@@ -11,6 +11,7 @@ interface BoardNoteCardProps {
   readonly object: BoardTextNote;
   readonly position: BoardPoint;
   readonly access?: "read" | "edit";
+  readonly dimmed?: boolean;
   readonly onSelect: () => void;
   readonly onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
 }
@@ -20,6 +21,7 @@ export function BoardNoteCard({
   object,
   position,
   access,
+  dimmed = false,
   onSelect,
   onDragStart,
 }: BoardNoteCardProps) {
@@ -27,6 +29,7 @@ export function BoardNoteCard({
   const setTombstoned = useAtomCommand(environmentBoards.setTombstoned, {
     reportFailure: false,
   });
+  const promoteNote = useAtomCommand(environmentBoards.promoteNote, { reportFailure: false });
   const [title, setTitle] = useState(object.title);
   const [text, setText] = useState(object.text);
   const [error, setError] = useState<string | null>(null);
@@ -82,14 +85,19 @@ export function BoardNoteCard({
   const dirty = title !== object.title || text !== object.text;
   return (
     <article
-      className={`absolute flex h-60 w-80 flex-col overflow-hidden rounded-xl border bg-amber-50 text-amber-950 shadow-lg dark:bg-amber-950 dark:text-amber-50 ${
+      className={`absolute flex flex-col overflow-hidden rounded-xl border bg-amber-50 text-amber-950 shadow-lg dark:bg-amber-950 dark:text-amber-50 ${
         access === "edit"
           ? "border-emerald-500 ring-2 ring-emerald-500/20"
           : access === "read"
             ? "border-sky-500 ring-2 ring-sky-500/20"
             : "border-amber-400/40"
       }`}
-      style={{ transform: `translate3d(${position.x}px, ${position.y}px, 0)` }}
+      style={{
+        transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
+        opacity: dimmed ? 0.2 : 1,
+        width: object.size.width,
+        height: object.size.height,
+      }}
       aria-label={`Note: ${object.title}`}
       data-board-access={access ?? "inaccessible"}
       onClick={onSelect}
@@ -114,6 +122,27 @@ export function BoardNoteCard({
           onPointerDown={(event) => event.stopPropagation()}
         >
           <SaveIcon />
+        </Button>
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          disabled={object.promotedAt !== undefined}
+          aria-label={
+            object.promotedAt ? "Note is a project artifact" : "Promote note to project artifact"
+          }
+          onClick={() =>
+            void promoteNote({
+              environmentId,
+              input: {
+                projectId: object.projectId,
+                objectId: object.id,
+                expectedRevision: object.revision,
+              },
+            })
+          }
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <SparklesIcon />
         </Button>
         <Button
           size="icon-xs"

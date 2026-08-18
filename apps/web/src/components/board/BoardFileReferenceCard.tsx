@@ -11,6 +11,7 @@ interface BoardFileReferenceCardProps {
   readonly object: BoardFileReference;
   readonly position: BoardPoint;
   readonly access?: "read" | "edit";
+  readonly dimmed?: boolean;
   readonly onSelect: () => void;
   readonly onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
 }
@@ -21,6 +22,7 @@ export function BoardFileReferenceCard({
   object,
   position,
   access,
+  dimmed = false,
   onSelect,
   onDragStart,
 }: BoardFileReferenceCardProps) {
@@ -38,14 +40,19 @@ export function BoardFileReferenceCard({
 
   return (
     <article
-      className={`absolute flex h-80 w-[440px] flex-col overflow-hidden rounded-xl border bg-card shadow-lg ${
+      className={`absolute flex flex-col overflow-hidden rounded-xl border bg-card shadow-lg ${
         access === "edit"
           ? "border-emerald-500 ring-2 ring-emerald-500/20"
           : access === "read"
             ? "border-sky-500 ring-2 ring-sky-500/20"
             : "border-border"
       }`}
-      style={{ transform: `translate3d(${position.x}px, ${position.y}px, 0)` }}
+      style={{
+        transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
+        opacity: dimmed ? 0.2 : 1,
+        width: object.size.width,
+        height: object.size.height,
+      }}
       aria-label={`File reference: ${object.path}`}
       data-board-access={access ?? "inaccessible"}
       onClick={onSelect}

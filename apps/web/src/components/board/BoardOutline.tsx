@@ -1,6 +1,6 @@
 import type { BoardObject, BoardObjectId, ThreadId } from "@t3tools/contracts";
 import { SearchIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 
@@ -10,6 +10,7 @@ interface BoardOutlineProps {
   readonly selectedObjectId: BoardObjectId | null;
   readonly showDeleted: boolean;
   readonly onSelect: (object: BoardObject) => void;
+  readonly onSearchResults: (ids: ReadonlySet<BoardObjectId> | null) => void;
 }
 
 function objectLabel(
@@ -36,6 +37,7 @@ export function BoardOutline({
   selectedObjectId,
   showDeleted,
   onSelect,
+  onSearchResults,
 }: BoardOutlineProps) {
   const [query, setQuery] = useState("");
   const visible = useMemo(() => {
@@ -56,6 +58,10 @@ export function BoardOutline({
         );
       });
   }, [objects, query, showDeleted, threadsById]);
+
+  useEffect(() => {
+    onSearchResults(query.trim() ? new Set(visible.map((object) => object.id)) : null);
+  }, [onSearchResults, query, visible]);
 
   return (
     <aside
@@ -95,6 +101,20 @@ export function BoardOutline({
                 {object.kind === "thread-frame" ? "thread" : object.kind}
               </span>
               <span className="min-w-0 flex-1 truncate">{label}</span>
+              {object.kind === "thread-frame" ? (
+                <span className="text-[10px] text-muted-foreground">
+                  {threadsById.get(object.threadId)?.archivedAt
+                    ? "Archived"
+                    : threadsById.get(object.threadId)?.session?.status === "running"
+                      ? "Running"
+                      : threadsById.get(object.threadId)?.hasPendingApprovals ||
+                          threadsById.get(object.threadId)?.hasPendingUserInput
+                        ? "Waiting"
+                        : threadsById.get(object.threadId)?.settledAt
+                          ? "Complete"
+                          : "Ready"}
+                </span>
+              ) : null}
               {object.tombstonedAt !== null ? (
                 <span className="text-[10px] uppercase text-muted-foreground">Deleted</span>
               ) : null}
