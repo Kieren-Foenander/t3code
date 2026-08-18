@@ -80,6 +80,28 @@ it.effect("registers the complete semantic board toolkit with MCP", () =>
   }).pipe(Effect.provide(BoardRegistrationTestLayer)),
 );
 
+it("emits spatial board tiles as native MCP image content", () => {
+  const result = McpHttpServer.boardContextCallToolResult({
+    mode: "image-plus-structure",
+    manifest: [],
+    relationships: [],
+    directText: [],
+    lazyObjectIds: [],
+    tiles: [
+      {
+        id: "tile:0:0",
+        objectIds: [],
+        imageDataUrl: "data:image/svg+xml;charset=utf-8,%3Csvg%3Ereadable%3C%2Fsvg%3E",
+      },
+    ],
+  });
+  expect(result.content).toHaveLength(2);
+  expect(result.content[1]).toMatchObject({ type: "image", mimeType: "image/svg+xml" });
+  expect(Buffer.from((result.content[1] as { data: Uint8Array }).data).toString()).toBe(
+    "<svg>readable</svg>",
+  );
+});
+
 it.effect("returns bounded structural preview snapshot failures", () =>
   Effect.scoped(
     Effect.gen(function* () {

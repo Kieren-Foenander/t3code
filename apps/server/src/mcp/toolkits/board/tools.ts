@@ -310,10 +310,9 @@ export const BoardUndoTool = mutatingBoardTool(
   }).annotate(Tool.Title, "Undo board operation"),
 );
 
-export const BoardToolkit = Toolkit.make(
+const boardStandardTools = [
   BoardSearchTool,
   BoardManifestTool,
-  BoardContextTool,
   BoardReadTool,
   BoardCreateNoteTool,
   BoardCreateShapeTool,
@@ -326,4 +325,8 @@ export const BoardToolkit = Toolkit.make(
   BoardTombstoneTool,
   BoardBatchTool,
   BoardUndoTool,
-);
+] as const;
+
+export const BoardStandardToolkit = Toolkit.make(...boardStandardTools);
+
+export const BoardToolkit = Toolkit.make(BoardContextTool, ...boardStandardTools);
