@@ -1,4 +1,10 @@
-import { BoardObjectId, CommandId, ProjectId, ThreadId } from "@t3tools/contracts";
+import {
+  BoardObjectId,
+  BoardRelationshipId,
+  CommandId,
+  ProjectId,
+  ThreadId,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { decideBoardCommand } from "./decider.ts";
@@ -323,5 +329,84 @@ describe("board decider", () => {
       "board.object-moved",
     ]);
     expect(events.at(-1)).toMatchObject({ revision: 3, position: { x: 90, y: 120 } });
+  });
+
+  it("updates arbitrary objects and relationships inside one atomic batch", () => {
+    const shapeId = BoardObjectId.make("shape:batch");
+    const noteId = BoardObjectId.make("note:batch-target");
+    const relationshipId = BoardRelationshipId.make("relationship:batch");
+    const shape = {
+      id: shapeId,
+      projectId,
+      kind: "diagram-shape" as const,
+      position: { x: 0, y: 0 },
+      size: { width: 200, height: 120 },
+      shape: "rectangle" as const,
+      label: "Before",
+      revision: 1,
+      createdAt: now,
+      updatedAt: now,
+      tombstonedAt: null,
+    };
+    const note = {
+      id: noteId,
+      projectId,
+      kind: "text-note" as const,
+      position: { x: 300, y: 0 },
+      size: { width: 320, height: 240 },
+      title: "Target",
+      text: "Target",
+      revision: 1,
+      createdAt: now,
+      updatedAt: now,
+      tombstonedAt: null,
+    };
+    const relationship = {
+      id: relationshipId,
+      projectId,
+      kind: "connector" as const,
+      label: "Before",
+      sourceObjectId: shapeId,
+      targetObjectId: noteId,
+      revision: 1,
+      createdAt: now,
+      updatedAt: now,
+      tombstonedAt: null,
+    };
+
+    const events = decideBoardCommand(
+      {
+        type: "board.batch",
+        commandId: CommandId.make("batch-semantic-update"),
+        projectId,
+        originatingThreadId: ThreadId.make("thread-1"),
+        createdAt: now,
+        operations: [
+          {
+            type: "object.update",
+            objectId: shapeId,
+            shape: "diamond",
+            label: "After",
+            expectedRevision: 1,
+          },
+          {
+            type: "relationship.update",
+            relationshipId,
+            label: "After",
+            tombstoned: true,
+            expectedRevision: 1,
+          },
+        ],
+      },
+      { objects: [shape, note], grants: [], relationships: [relationship], threadIds: [] },
+    );
+
+    expect(events).toMatchObject([
+      { type: "board.object-updated", object: { shape: "diamond", label: "After", revision: 2 } },
+      {
+        type: "board.relationship-created",
+        relationship: { label: "After", revision: 2, tombstonedAt: now },
+      },
+    ]);
   });
 });

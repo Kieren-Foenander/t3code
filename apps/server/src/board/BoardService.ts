@@ -733,6 +733,7 @@ export const layer = Layer.effect(
                   }
                   if (
                     operation.type === "object.move" ||
+                    operation.type === "object.update" ||
                     operation.type === "note.update" ||
                     operation.type === "object.tombstone" ||
                     operation.type === "object.restore"
@@ -744,6 +745,19 @@ export const layer = Layer.effect(
                     if (
                       !editableIds.has(operation.sourceObjectId) ||
                       !readableIds.has(operation.targetObjectId)
+                    ) {
+                      return false;
+                    }
+                    continue;
+                  }
+                  if (operation.type === "relationship.update") {
+                    const relationship = accessible.relationships.find(
+                      (candidate) => candidate.id === operation.relationshipId,
+                    );
+                    if (
+                      !relationship ||
+                      !editableIds.has(relationship.sourceObjectId) ||
+                      !readableIds.has(relationship.targetObjectId)
                     ) {
                       return false;
                     }

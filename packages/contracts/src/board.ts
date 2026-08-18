@@ -481,6 +481,20 @@ const BoardBatchUpdateNoteOperation = Schema.Struct({
   text: Schema.optional(Schema.String),
   expectedRevision: BoardRevision,
 });
+const BoardBatchUpdateObjectOperation = Schema.Struct({
+  type: Schema.Literal("object.update"),
+  objectId: BoardObjectId,
+  size: Schema.optional(BoardSize),
+  frameSize: Schema.optional(BoardFrameSize),
+  title: Schema.optional(TrimmedNonEmptyString),
+  shape: Schema.optional(Schema.Literals(["rectangle", "ellipse", "diamond"])),
+  label: Schema.optional(Schema.String),
+  path: Schema.optional(TrimmedNonEmptyString),
+  startLine: Schema.optional(Schema.NullOr(NonNegativeInt)),
+  endLine: Schema.optional(Schema.NullOr(NonNegativeInt)),
+  checkpointRef: Schema.optional(Schema.NullOr(CheckpointRef)),
+  expectedRevision: BoardRevision,
+});
 const BoardBatchConnectOperation = Schema.Struct({
   type: Schema.Literal("relationship.create"),
   relationshipId: BoardRelationshipId,
@@ -488,6 +502,13 @@ const BoardBatchConnectOperation = Schema.Struct({
   label: Schema.optional(Schema.String),
   sourceObjectId: BoardObjectId,
   targetObjectId: BoardObjectId,
+});
+const BoardBatchUpdateRelationshipOperation = Schema.Struct({
+  type: Schema.Literal("relationship.update"),
+  relationshipId: BoardRelationshipId,
+  label: Schema.optional(Schema.NullOr(Schema.String)),
+  tombstoned: Schema.optional(Schema.Boolean),
+  expectedRevision: BoardRevision,
 });
 const BoardBatchTombstoneOperation = Schema.Struct({
   type: Schema.Literals(["object.tombstone", "object.restore"]),
@@ -500,7 +521,9 @@ export const BoardBatchOperation = Schema.Union([
   BoardBatchCreateShapeOperation,
   BoardBatchMoveOperation,
   BoardBatchUpdateNoteOperation,
+  BoardBatchUpdateObjectOperation,
   BoardBatchConnectOperation,
+  BoardBatchUpdateRelationshipOperation,
   BoardBatchTombstoneOperation,
 ]);
 export type BoardBatchOperation = typeof BoardBatchOperation.Type;

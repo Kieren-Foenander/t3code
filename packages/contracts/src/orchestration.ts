@@ -494,6 +494,8 @@ export const OrchestrationThreadShell = Schema.Struct({
       }),
     ),
   ),
+  /** Files changed by the latest captured checkpoint, for compact thread summaries. */
+  latestChangedFiles: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
 });
 export type OrchestrationThreadShell = typeof OrchestrationThreadShell.Type;
 

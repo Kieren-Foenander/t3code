@@ -175,10 +175,10 @@ export function decideBoardCommand(
                     projectId: command.projectId,
                     createdAt: command.createdAt,
                   }
-                : operation.type === "relationship.create"
+                : operation.type === "object.update"
                   ? {
                       ...operation,
-                      type: "board.relationship.create",
+                      type: "board.object.update",
                       commandId: command.commandId,
                       projectId: command.projectId,
                       originatingThreadId: command.originatingThreadId,
@@ -196,16 +196,60 @@ export function decideBoardCommand(
                         : { originatingProviderKind: command.originatingProviderKind }),
                       createdAt: command.createdAt,
                     }
-                  : {
-                      ...operation,
-                      type:
-                        operation.type === "object.restore"
-                          ? "board.object.restore"
-                          : "board.object.tombstone",
-                      commandId: command.commandId,
-                      projectId: command.projectId,
-                      createdAt: command.createdAt,
-                    };
+                  : operation.type === "relationship.create"
+                    ? {
+                        ...operation,
+                        type: "board.relationship.create",
+                        commandId: command.commandId,
+                        projectId: command.projectId,
+                        originatingThreadId: command.originatingThreadId,
+                        ...(command.originatingTurnId === undefined
+                          ? {}
+                          : { originatingTurnId: command.originatingTurnId }),
+                        ...(command.originatingProviderInstanceId === undefined
+                          ? {}
+                          : {
+                              originatingProviderInstanceId: command.originatingProviderInstanceId,
+                            }),
+                        originatingOperationId: command.originatingOperationId ?? command.commandId,
+                        ...(command.originatingProviderKind === undefined
+                          ? {}
+                          : { originatingProviderKind: command.originatingProviderKind }),
+                        createdAt: command.createdAt,
+                      }
+                    : operation.type === "relationship.update"
+                      ? {
+                          ...operation,
+                          type: "board.relationship.update",
+                          commandId: command.commandId,
+                          projectId: command.projectId,
+                          originatingThreadId: command.originatingThreadId,
+                          ...(command.originatingTurnId === undefined
+                            ? {}
+                            : { originatingTurnId: command.originatingTurnId }),
+                          ...(command.originatingProviderInstanceId === undefined
+                            ? {}
+                            : {
+                                originatingProviderInstanceId:
+                                  command.originatingProviderInstanceId,
+                              }),
+                          originatingOperationId:
+                            command.originatingOperationId ?? command.commandId,
+                          ...(command.originatingProviderKind === undefined
+                            ? {}
+                            : { originatingProviderKind: command.originatingProviderKind }),
+                          createdAt: command.createdAt,
+                        }
+                      : {
+                          ...operation,
+                          type:
+                            operation.type === "object.restore"
+                              ? "board.object.restore"
+                              : "board.object.tombstone",
+                          commandId: command.commandId,
+                          projectId: command.projectId,
+                          createdAt: command.createdAt,
+                        };
       const nestedEvents = decideBoardCommand(nested, {
         objects,
         relationships: relationships ?? [],

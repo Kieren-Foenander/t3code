@@ -460,6 +460,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           hasActionableProposedPlan: false,
           backgroundLiveness: null,
           planProgress: null,
+          latestChangedFiles: ["README.md"],
         },
       ]);
 

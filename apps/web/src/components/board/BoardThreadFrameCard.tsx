@@ -58,6 +58,25 @@ export function BoardThreadFrameCard({
     }),
   );
   const archived = Boolean(thread?.archivedAt);
+  const viewedStorageKey = `t3code:board-thread-viewed:v1:${environmentId}:${object.threadId}`;
+  const [viewedAt, setViewedAt] = useState(() => {
+    try {
+      return window.localStorage.getItem(viewedStorageKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
+
+  useEffect(() => {
+    if (!active || !thread?.updatedAt) return;
+    setViewedAt(thread.updatedAt);
+    try {
+      window.localStorage.setItem(viewedStorageKey, thread.updatedAt);
+    } catch {
+      // Presentation state persistence is best effort.
+    }
+  }, [active, thread?.updatedAt, viewedStorageKey]);
+  const unread = Boolean(!active && thread?.updatedAt && thread.updatedAt > viewedAt);
 
   useEffect(() => {
     setLevel((previous) =>
@@ -91,11 +110,15 @@ export function BoardThreadFrameCard({
       data-board-thread-id={object.threadId}
       aria-label={`Thread: ${thread?.title ?? object.threadId}`}
       aria-current={active ? "true" : undefined}
+      tabIndex={0}
       onPointerEnter={() => {
         if (!protectedEditorOwnsFocus()) onDwell();
       }}
       onPointerLeave={onDwellEnd}
-      onClick={onActivate}
+      onClick={(event) => {
+        onActivate();
+        event.currentTarget.focus();
+      }}
       onDoubleClick={() => void focusThread()}
     >
       <div className="flex min-w-0 flex-1 flex-col">
@@ -114,9 +137,7 @@ export function BoardThreadFrameCard({
                     ? "Complete"
                     : "Waiting"}
             </p>
-            {!active && thread?.updatedAt ? (
-              <span className="text-[10px] font-medium text-primary">Updated</span>
-            ) : null}
+            {unread ? <span className="text-[10px] font-medium text-primary">Updated</span> : null}
           </div>
           <Button
             render={
@@ -169,6 +190,13 @@ export function BoardThreadFrameCard({
               <p className="text-xs font-medium text-amber-600">Blocked on user input</p>
             ) : null}
             {thread?.branch ? <p className="truncate font-mono text-xs">{thread.branch}</p> : null}
+            {(thread?.latestChangedFiles?.length ?? 0) > 0 ? (
+              <p className="truncate text-xs">
+                {thread?.latestChangedFiles?.length === 1
+                  ? thread.latestChangedFiles[0]
+                  : `${thread?.latestChangedFiles?.[0]} +${(thread?.latestChangedFiles?.length ?? 1) - 1} more`}
+              </p>
+            ) : null}
             <p className="text-xs">
               {artifactCount} board artifact{artifactCount === 1 ? "" : "s"}
             </p>
