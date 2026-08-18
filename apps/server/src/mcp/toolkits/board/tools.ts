@@ -3,6 +3,7 @@ import {
   BoardObjectId,
   BoardOperationError,
   BoardPoint,
+  BoardRelationshipId,
   BoardBatchOperation,
   BoardDispatchResult,
   CommandId,
@@ -171,6 +172,29 @@ export const BoardPlaceTool = mutatingBoardTool(
   }).annotate(Tool.Title, "Place board object"),
 );
 
+export const BoardUpdateObjectTool = mutatingBoardTool(
+  Tool.make("board_update_object", {
+    description:
+      "Revision-safely edit an accessible frame, note size, file reference, shape, or group. Fields that do not apply to the object's kind are ignored.",
+    parameters: Schema.Struct({
+      objectId: BoardObjectId,
+      expectedRevision: NonNegativeInt,
+      width: Schema.optional(Schema.Number),
+      height: Schema.optional(Schema.Number),
+      frameSize: Schema.optional(Schema.Literals(["compact", "standard", "wide"])),
+      title: Schema.optional(Schema.String),
+      shape: Schema.optional(Schema.Literals(["rectangle", "ellipse", "diamond"])),
+      label: Schema.optional(Schema.String),
+      path: Schema.optional(Schema.String),
+      startLine: Schema.optional(Schema.NullOr(NonNegativeInt)),
+      endLine: Schema.optional(Schema.NullOr(NonNegativeInt)),
+    }),
+    success: BoardDispatchResult,
+    failure: BoardOperationError,
+    dependencies,
+  }).annotate(Tool.Title, "Edit board object"),
+);
+
 export const BoardConnectTool = mutatingBoardTool(
   Tool.make("board_connect", {
     description:
@@ -185,6 +209,21 @@ export const BoardConnectTool = mutatingBoardTool(
     failure: BoardOperationError,
     dependencies,
   }).annotate(Tool.Title, "Connect board objects"),
+);
+
+export const BoardUpdateRelationshipTool = mutatingBoardTool(
+  Tool.make("board_update_relationship", {
+    description: "Revision-safely relabel or reversibly tombstone an editable relationship.",
+    parameters: Schema.Struct({
+      relationshipId: BoardRelationshipId,
+      expectedRevision: NonNegativeInt,
+      label: Schema.optional(Schema.NullOr(Schema.String)),
+      tombstoned: Schema.optional(Schema.Boolean),
+    }),
+    success: BoardDispatchResult,
+    failure: BoardOperationError,
+    dependencies,
+  }).annotate(Tool.Title, "Edit board relationship"),
 );
 
 export const BoardCreateGroupTool = mutatingBoardTool(
@@ -251,7 +290,9 @@ export const BoardToolkit = Toolkit.make(
   BoardCreateShapeTool,
   BoardUpdateNoteTool,
   BoardPlaceTool,
+  BoardUpdateObjectTool,
   BoardConnectTool,
+  BoardUpdateRelationshipTool,
   BoardCreateGroupTool,
   BoardTombstoneTool,
   BoardBatchTool,

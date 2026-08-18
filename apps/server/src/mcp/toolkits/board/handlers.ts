@@ -179,6 +179,34 @@ const handlers = {
         createdAt,
       }),
     ),
+  board_update_object: (input) =>
+    invoke("update-object", ({ scope, board, snapshot, commandId, createdAt }) => {
+      const current = snapshot.objects.find((object) => object.id === input.objectId);
+      const size =
+        current && (input.width !== undefined || input.height !== undefined)
+          ? {
+              width: input.width ?? current.size.width,
+              height: input.height ?? current.size.height,
+            }
+          : undefined;
+      return board.dispatchAsThread(scope.threadId, {
+        type: "board.object.update",
+        commandId,
+        projectId: snapshot.projectId,
+        objectId: input.objectId,
+        expectedRevision: input.expectedRevision,
+        ...(size === undefined ? {} : { size }),
+        ...(input.frameSize === undefined ? {} : { frameSize: input.frameSize }),
+        ...(input.title === undefined ? {} : { title: input.title }),
+        ...(input.shape === undefined ? {} : { shape: input.shape }),
+        ...(input.label === undefined ? {} : { label: input.label }),
+        ...(input.path === undefined ? {} : { path: input.path }),
+        ...(input.startLine === undefined ? {} : { startLine: input.startLine }),
+        ...(input.endLine === undefined ? {} : { endLine: input.endLine }),
+        ...operationProvenance(scope, commandId),
+        createdAt,
+      });
+    }),
   board_connect: (input) =>
     invoke("connect", ({ scope, board, snapshot, uuid, commandId, createdAt }) =>
       board.dispatchAsThread(scope.threadId, {
@@ -190,6 +218,20 @@ const handlers = {
         ...(input.label === undefined ? {} : { label: input.label }),
         sourceObjectId: input.sourceObjectId,
         targetObjectId: input.targetObjectId,
+        ...operationProvenance(scope, commandId),
+        createdAt,
+      }),
+    ),
+  board_update_relationship: (input) =>
+    invoke("update-relationship", ({ scope, board, snapshot, commandId, createdAt }) =>
+      board.dispatchAsThread(scope.threadId, {
+        type: "board.relationship.update",
+        commandId,
+        projectId: snapshot.projectId,
+        relationshipId: input.relationshipId,
+        expectedRevision: input.expectedRevision,
+        ...(input.label === undefined ? {} : { label: input.label }),
+        ...(input.tombstoned === undefined ? {} : { tombstoned: input.tombstoned }),
         ...operationProvenance(scope, commandId),
         createdAt,
       }),

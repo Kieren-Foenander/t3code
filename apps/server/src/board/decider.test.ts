@@ -185,6 +185,55 @@ describe("board decider", () => {
     ).toThrow(/inside the project workspace/);
   });
 
+  it("validates line ranges and revision-safely resizes artifacts", () => {
+    expect(() =>
+      decideBoardCommand(
+        {
+          type: "board.file-reference.create",
+          commandId: CommandId.make("file-range"),
+          projectId,
+          objectId: BoardObjectId.make("file:range"),
+          position: { x: 0, y: 0 },
+          path: "src/index.ts",
+          startLine: 20,
+          endLine: 10,
+          createdAt: now,
+        },
+        { objects: [], threadIds: [] },
+      ),
+    ).toThrow(/must end after/);
+
+    const group = {
+      id: BoardObjectId.make("group:resize"),
+      projectId,
+      kind: "group" as const,
+      position: { x: 0, y: 0 },
+      size: { width: 400, height: 300 },
+      title: "Group",
+      revision: 2,
+      createdAt: now,
+      updatedAt: now,
+      tombstonedAt: null,
+    };
+    const [event] = decideBoardCommand(
+      {
+        type: "board.object.update",
+        commandId: CommandId.make("resize-group"),
+        projectId,
+        objectId: group.id,
+        size: { width: 800, height: 640 },
+        title: "System",
+        expectedRevision: 2,
+        createdAt: now,
+      },
+      { objects: [group], threadIds: [] },
+    );
+    expect(event).toMatchObject({
+      type: "board.object-updated",
+      object: { title: "System", size: { width: 800, height: 640 }, revision: 3 },
+    });
+  });
+
   it("shares and revokes artifact authority explicitly", () => {
     const threadId = ThreadId.make("thread-1");
     const frame = {

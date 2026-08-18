@@ -568,6 +568,7 @@ export class BoardOperationError extends Schema.TaggedErrorClass<BoardOperationE
       "project-not-found",
       "thread-not-found",
       "invalid-path",
+      "invalid-range",
       "object-not-found",
       "project-mismatch",
       "revision-conflict",

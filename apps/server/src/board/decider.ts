@@ -400,6 +400,9 @@ export function decideBoardCommand(
       size: { width: 320, height: 240 },
       title: command.title,
       text: command.text,
+      ...(command.originatingProviderInstanceId === undefined
+        ? {}
+        : { promotedAt: command.createdAt }),
       ...provenance(command),
       revision: 1,
       createdAt: command.createdAt,
@@ -450,6 +453,18 @@ export function decideBoardCommand(
       throw new BoardOperationError({
         reason: "revision-conflict",
         message: `Board object ${command.objectId} already exists.`,
+      });
+    }
+    if (
+      command.startLine === 0 ||
+      command.endLine === 0 ||
+      (command.startLine !== undefined &&
+        command.endLine !== undefined &&
+        command.endLine < command.startLine)
+    ) {
+      throw new BoardOperationError({
+        reason: "invalid-range",
+        message: "File reference line ranges are one-based and must end after they start.",
       });
     }
     const object: BoardObject = {
@@ -584,7 +599,7 @@ export function decideBoardCommand(
     const relationship = (state.relationships ?? []).find(
       (candidate) => candidate.id === command.relationshipId,
     );
-    if (!relationship || relationship.tombstonedAt !== null) {
+    if (!relationship || (relationship.tombstonedAt !== null && command.tombstoned !== false)) {
       throw new BoardOperationError({
         reason: "object-not-found",
         message: `Board relationship ${command.relationshipId} was not found.`,
@@ -613,7 +628,12 @@ export function decideBoardCommand(
               : { label: command.label }),
           revision: relationship.revision + 1,
           updatedAt: command.createdAt,
-          tombstonedAt: command.tombstoned === true ? command.createdAt : null,
+          tombstonedAt:
+            command.tombstoned === undefined
+              ? relationship.tombstonedAt
+              : command.tombstoned
+                ? command.createdAt
+                : null,
         },
       },
     ];
@@ -817,6 +837,38 @@ export function decideBoardCommand(
         throw new BoardOperationError({
           reason: "invalid-path",
           message: "File references must stay inside the project workspace.",
+        });
+      }
+    }
+    if (
+      command.startLine === 0 ||
+      command.endLine === 0 ||
+      (typeof command.startLine === "number" &&
+        typeof command.endLine === "number" &&
+        command.endLine < command.startLine)
+    ) {
+      throw new BoardOperationError({
+        reason: "invalid-range",
+        message: "File reference line ranges are one-based and must end after they start.",
+      });
+    }
+    if (object.kind === "file-reference") {
+      const nextStart =
+        command.startLine === undefined
+          ? object.startLine
+          : command.startLine === null
+            ? undefined
+            : command.startLine;
+      const nextEnd =
+        command.endLine === undefined
+          ? object.endLine
+          : command.endLine === null
+            ? undefined
+            : command.endLine;
+      if (nextStart !== undefined && nextEnd !== undefined && nextEnd < nextStart) {
+        throw new BoardOperationError({
+          reason: "invalid-range",
+          message: "File reference line ranges are one-based and must end after they start.",
         });
       }
     }

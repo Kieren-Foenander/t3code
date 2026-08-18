@@ -28,6 +28,7 @@ import {
   WorkflowIcon,
   PencilIcon,
   ScalingIcon,
+  Trash2Icon,
 } from "lucide-react";
 import {
   useCallback,
@@ -1127,6 +1128,30 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
             <ScalingIcon />
           </Button>
           <Button
+            size="icon-xs"
+            variant="ghost"
+            disabled={!selectedRelationship}
+            aria-label={
+              selectedRelationship?.tombstonedAt
+                ? "Restore selected connector"
+                : "Delete selected connector"
+            }
+            onClick={() => {
+              if (!selectedRelationship) return;
+              void updateRelationship({
+                environmentId,
+                input: {
+                  projectId,
+                  relationshipId: selectedRelationship.id,
+                  expectedRevision: selectedRelationship.revision,
+                  tombstoned: selectedRelationship.tombstonedAt === null,
+                },
+              });
+            }}
+          >
+            {selectedRelationship?.tombstonedAt ? <Undo2Icon /> : <Trash2Icon />}
+          </Button>
+          <Button
             size="sm"
             variant="ghost"
             disabled={!selectedObjectId || !activeThreadId}
@@ -1399,7 +1424,7 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
           })}
           <svg className="pointer-events-none absolute left-0 top-0 overflow-visible" aria-hidden>
             {(board.snapshot?.relationships ?? []).map((relationship) => {
-              if (relationship.tombstonedAt !== null) return null;
+              if (relationship.tombstonedAt !== null && !showDeleted) return null;
               const source = objectsById.get(relationship.sourceObjectId);
               const target = objectsById.get(relationship.targetObjectId);
               if (!source || !target) return null;
@@ -1413,7 +1438,10 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
                 (source.kind === "thread-frame" && source.threadId === activeThreadId) ||
                 (target.kind === "thread-frame" && target.threadId === activeThreadId);
               return (
-                <g key={relationship.id} opacity={emphasized ? 0.9 : 0.16}>
+                <g
+                  key={relationship.id}
+                  opacity={relationship.tombstonedAt ? 0.12 : emphasized ? 0.9 : 0.16}
+                >
                   <line
                     className="pointer-events-auto cursor-pointer"
                     x1={sourcePosition.x + source.size.width / 2}
