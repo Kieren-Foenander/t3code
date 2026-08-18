@@ -14,9 +14,11 @@ Subscribers receive ordered deltas after commit and reconnect from their last se
 validation or revision conflict rolls back the whole batch.
 
 Agent-authored commands persist an operation preimage and compact activity in the same transaction.
-`board.operation.undo` projects that preimage as new revisions and marks the activity undone. It
-never calls checkpointing or a provider adapter. Project authority, operation preimages, and
-activity projections were added in migrations 42 and 43.
+The board activity reactor replays those durable records with deterministic command ids and appends
+them to the originating thread timeline, while the board keeps its project-level activity panel.
+`board.operation.undo` projects the preimage as new revisions and marks the board activity undone. It
+never calls checkpointing or a provider adapter. Project authority, operation preimages, and activity
+projections were added in migrations 42 and 43.
 
 Objects are thread frames, notes, file references, diagram shapes, or soft groups. Tombstones are
 reversible. Relationships carry `spawned-from`, `context-shared-with`, `blocked-by`, or purely visual

@@ -69,6 +69,7 @@ export interface BoardServiceShape {
     projectId: ProjectId,
     afterSequence: number,
   ) => Effect.Effect<ReadonlyArray<BoardDelta>, BoardOperationError>;
+  readonly listActivities: Effect.Effect<ReadonlyArray<BoardActivity>, BoardOperationError>;
   readonly changes: Stream.Stream<BoardDelta>;
 }
 
@@ -183,6 +184,15 @@ export const layer = Layer.effect(
       `;
       return rows.map((row) => decodeBoardActivity(row.payloadJson));
     });
+
+    const listActivities = sql<BoardActivityRow>`
+      SELECT payload_json AS "payloadJson"
+      FROM projection_board_activities
+      ORDER BY updated_sequence ASC
+    `.pipe(
+      Effect.map((rows) => rows.map((row) => decodeBoardActivity(row.payloadJson))),
+      Effect.mapError((cause) => (isBoardOperationError(cause) ? cause : persistenceError(cause))),
+    );
 
     const requireProject = Effect.fn("BoardService.requireProject")(function* (
       projectId: ProjectId,
@@ -893,6 +903,7 @@ export const layer = Layer.effect(
       getAccessibleSnapshot,
       dispatchAsThread,
       replay,
+      listActivities,
       changes: Stream.fromPubSub(changes),
     });
   }),

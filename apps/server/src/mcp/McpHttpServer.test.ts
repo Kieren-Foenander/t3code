@@ -98,6 +98,7 @@ const BoardContextTestLayer = BoardRegistrationTestLayer.pipe(
           }),
         dispatchAsThread: () => Effect.die("unused"),
         replay: () => Effect.die("unused"),
+        listActivities: Effect.succeed([]),
         changes: Stream.empty,
       }),
     ),
