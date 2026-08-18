@@ -1,7 +1,14 @@
 import { expect, it } from "@effect/vitest";
 import { NodeHttpServer } from "@effect/platform-node";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { EnvironmentId, PreviewTabId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import {
+  BoardObjectId,
+  EnvironmentId,
+  PreviewTabId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
@@ -11,6 +18,7 @@ import { HttpBody, HttpClient, HttpRouter, HttpServerResponse } from "effect/uns
 import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as PreviewAutomationBroker from "./PreviewAutomationBroker.ts";
+import * as BoardService from "../board/BoardService.ts";
 
 const environmentId = EnvironmentId.make("environment-mcp-test");
 const threadId = ThreadId.make("thread-mcp-test");
@@ -40,6 +48,60 @@ const TestLayer = McpHttpServer.PreviewToolkitRegistrationLive.pipe(
 );
 const BoardRegistrationTestLayer = McpHttpServer.BoardToolkitRegistrationLive.pipe(
   Layer.provideMerge(McpServer.McpServer.layer),
+);
+const boardProjectId = ProjectId.make("project-board-mcp-test");
+const boardObjectId = BoardObjectId.make("note:board-mcp-test");
+const boardInvocation = {
+  ...invocation,
+  capabilities: new Set(["board"] as const),
+  providerKind: "codex",
+};
+const BoardContextTestLayer = BoardRegistrationTestLayer.pipe(
+  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(
+    Layer.succeed(
+      BoardService.BoardService,
+      BoardService.BoardService.of({
+        dispatch: () => Effect.die("unused"),
+        ensureThreadFrames: () => Effect.die("unused"),
+        getSnapshot: () => Effect.die("unused"),
+        getAccessibleSnapshot: () =>
+          Effect.succeed({
+            projectId: boardProjectId,
+            sequence: 1,
+            objects: [
+              {
+                id: boardObjectId,
+                projectId: boardProjectId,
+                kind: "text-note",
+                position: { x: 0, y: 0 },
+                size: { width: 320, height: 240 },
+                title: "Shared note",
+                text: "Visible board context",
+                revision: 1,
+                createdAt: "2026-08-18T00:00:00.000Z",
+                updatedAt: "2026-08-18T00:00:00.000Z",
+                tombstonedAt: null,
+              },
+            ],
+            relationships: [],
+            grants: [
+              {
+                projectId: boardProjectId,
+                threadId,
+                objectId: boardObjectId,
+                access: "read",
+                createdAt: "2026-08-18T00:00:00.000Z",
+                revokedAt: null,
+              },
+            ],
+          }),
+        dispatchAsThread: () => Effect.die("unused"),
+        replay: () => Effect.die("unused"),
+        changes: Stream.empty,
+      }),
+    ),
+  ),
 );
 
 it("normalizes empty successful notification responses to accepted", () => {
@@ -101,6 +163,24 @@ it("emits spatial board tiles as native MCP image content", () => {
     "<svg>readable</svg>",
   );
 });
+
+it.effect("calls board context through MCP with provider-scoped authority", () =>
+  Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const result = yield* server
+      .callTool({ name: "board_context", arguments: {} })
+      .pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, boardInvocation),
+        Effect.provideService(McpSchema.McpServerClient, client),
+      );
+    expect(result.isError).toBe(false);
+    expect(result.structuredContent).toMatchObject({
+      mode: "image-plus-structure",
+      manifest: [{ id: boardObjectId }],
+    });
+    expect(result.content.some((content) => content.type === "image")).toBe(true);
+  }).pipe(Effect.provide(BoardContextTestLayer)),
+);
 
 it.effect("returns bounded structural preview snapshot failures", () =>
   Effect.scoped(
