@@ -7,6 +7,7 @@ import {
   type BoardGrant,
   type BoardObject,
   type BoardPoint,
+  type BoardProjectAuthority,
   type BoardRelationship,
   type ProviderInstanceId,
   type ProjectId,
@@ -51,6 +52,13 @@ export type BoardDomainEvent =
       readonly commandId: BoardCommand["commandId"];
       readonly occurredAt: string;
       readonly grant: BoardGrant;
+    }
+  | {
+      readonly type: "board.authority-updated";
+      readonly projectId: ProjectId;
+      readonly commandId: BoardCommand["commandId"];
+      readonly occurredAt: string;
+      readonly authority: BoardProjectAuthority;
     };
 
 export interface BoardDecisionState {
@@ -58,6 +66,7 @@ export interface BoardDecisionState {
   readonly relationships?: ReadonlyArray<BoardRelationship>;
   readonly grants?: ReadonlyArray<BoardGrant>;
   readonly threadIds: ReadonlyArray<ThreadId>;
+  readonly authority?: BoardProjectAuthority;
 }
 
 const THREAD_FRAME_WIDTH = 440;
@@ -204,7 +213,7 @@ export function decideBoardCommand(
             ),
             event.relationship,
           ];
-        } else {
+        } else if (event.type === "board.grant-updated") {
           grants = [
             ...(grants ?? []).filter(
               (grant) =>
@@ -257,6 +266,23 @@ export function decideBoardCommand(
         },
       ];
     });
+  }
+
+  if (command.type === "board.project-authority.set") {
+    return [
+      {
+        type: "board.authority-updated",
+        projectId: command.projectId,
+        commandId: command.commandId,
+        occurredAt: command.createdAt,
+        authority: {
+          projectId: command.projectId,
+          defaultReadScope: command.defaultReadScope,
+          defaultWriteAuthority: command.defaultWriteAuthority,
+          updatedAt: command.createdAt,
+        },
+      },
+    ];
   }
 
   if (command.type === "board.thread-frame.place") {

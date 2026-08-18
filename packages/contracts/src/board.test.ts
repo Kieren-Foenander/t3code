@@ -58,6 +58,12 @@ it.effect("decodes an isolated board snapshot", () =>
       ],
       relationships: [],
       grants: [],
+      authority: {
+        projectId: "project-1",
+        defaultReadScope: "own",
+        defaultWriteAuthority: "own",
+        updatedAt: "2026-08-17T00:00:00.000Z",
+      },
     });
     assert.strictEqual(snapshot.objects[0]?.kind, "thread-frame");
   }),
@@ -86,6 +92,12 @@ it.effect("rejects non-positive board object dimensions", () =>
         ],
         relationships: [],
         grants: [],
+        authority: {
+          projectId: "project-1",
+          defaultReadScope: "own",
+          defaultWriteAuthority: "own",
+          updatedAt: "2026-08-17T00:00:00.000Z",
+        },
       }),
     );
     assert.strictEqual(result._tag, "Failure");

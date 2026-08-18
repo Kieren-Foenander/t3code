@@ -111,6 +111,9 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
   const updateObject = useAtomCommand(environmentBoards.updateObject, { reportFailure: false });
   const setGrant = useAtomCommand(environmentBoards.setGrant, { reportFailure: false });
   const setAuthority = useAtomCommand(environmentBoards.setAuthority, { reportFailure: false });
+  const setProjectAuthority = useAtomCommand(environmentBoards.setProjectAuthority, {
+    reportFailure: false,
+  });
   const setTombstoned = useAtomCommand(environmentBoards.setTombstoned, {
     reportFailure: false,
   });
@@ -808,6 +811,32 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
       },
     });
   };
+  const projectAuthority = board.snapshot?.authority ?? {
+    projectId,
+    defaultReadScope: "own" as const,
+    defaultWriteAuthority: "own" as const,
+    updatedAt: "1970-01-01T00:00:00.000Z",
+  };
+  const toggleProjectDefault = (kind: "read" | "write") => {
+    void setProjectAuthority({
+      environmentId,
+      input: {
+        projectId,
+        defaultReadScope:
+          kind === "read"
+            ? projectAuthority.defaultReadScope === "own"
+              ? "board"
+              : "own"
+            : projectAuthority.defaultReadScope,
+        defaultWriteAuthority:
+          kind === "write"
+            ? projectAuthority.defaultWriteAuthority === "own"
+              ? "board"
+              : "own"
+            : projectAuthority.defaultWriteAuthority,
+      },
+    });
+  };
 
   const editSelectedObject = async () => {
     if (!selectedObject) return;
@@ -1038,6 +1067,24 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
             onClick={() => updateWholeBoardAuthority("edit")}
           >
             <Share2Icon /> Full edit
+          </Button>
+          <Button
+            size="sm"
+            variant={projectAuthority.defaultReadScope === "board" ? "secondary" : "ghost"}
+            aria-label="Toggle project default board read scope"
+            aria-pressed={projectAuthority.defaultReadScope === "board"}
+            onClick={() => toggleProjectDefault("read")}
+          >
+            Default read
+          </Button>
+          <Button
+            size="sm"
+            variant={projectAuthority.defaultWriteAuthority === "board" ? "secondary" : "ghost"}
+            aria-label="Toggle project default board write authority"
+            aria-pressed={projectAuthority.defaultWriteAuthority === "board"}
+            onClick={() => toggleProjectDefault("write")}
+          >
+            Default edit
           </Button>
           <Button
             size="icon-xs"

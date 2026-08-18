@@ -133,12 +133,21 @@ export const BoardGrant = Schema.Struct({
 });
 export type BoardGrant = typeof BoardGrant.Type;
 
+export const BoardProjectAuthority = Schema.Struct({
+  projectId: ProjectId,
+  defaultReadScope: Schema.Literals(["own", "board"]),
+  defaultWriteAuthority: Schema.Literals(["own", "board"]),
+  updatedAt: IsoDateTime,
+});
+export type BoardProjectAuthority = typeof BoardProjectAuthority.Type;
+
 export const BoardSnapshot = Schema.Struct({
   projectId: ProjectId,
   sequence: NonNegativeInt,
   objects: Schema.Array(BoardObject),
   relationships: Schema.Array(BoardRelationship),
   grants: Schema.Array(BoardGrant),
+  authority: Schema.optional(BoardProjectAuthority),
 });
 export type BoardSnapshot = typeof BoardSnapshot.Type;
 
@@ -169,10 +178,19 @@ export const BoardGrantUpsertedDelta = Schema.Struct({
 });
 export type BoardGrantUpsertedDelta = typeof BoardGrantUpsertedDelta.Type;
 
+export const BoardAuthorityUpsertedDelta = Schema.Struct({
+  kind: Schema.Literal("authority-upserted"),
+  projectId: ProjectId,
+  sequence: NonNegativeInt,
+  commandId: CommandId,
+  authority: BoardProjectAuthority,
+});
+
 export const BoardDelta = Schema.Union([
   BoardObjectUpsertedDelta,
   BoardRelationshipUpsertedDelta,
   BoardGrantUpsertedDelta,
+  BoardAuthorityUpsertedDelta,
 ]);
 export type BoardDelta = typeof BoardDelta.Type;
 
@@ -365,6 +383,15 @@ export const BoardSetThreadAuthorityCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+export const BoardSetProjectAuthorityCommand = Schema.Struct({
+  type: Schema.Literal("board.project-authority.set"),
+  commandId: CommandId,
+  projectId: ProjectId,
+  defaultReadScope: Schema.Literals(["own", "board"]),
+  defaultWriteAuthority: Schema.Literals(["own", "board"]),
+  createdAt: IsoDateTime,
+});
+
 const BoardBatchCreateNoteOperation = Schema.Struct({
   type: Schema.Literal("note.create"),
   objectId: BoardObjectId,
@@ -444,6 +471,7 @@ export const BoardCommand = Schema.Union([
   BoardUpdateRelationshipCommand,
   BoardSetGrantCommand,
   BoardSetThreadAuthorityCommand,
+  BoardSetProjectAuthorityCommand,
   BoardBatchCommand,
 ]);
 export type BoardCommand = typeof BoardCommand.Type;

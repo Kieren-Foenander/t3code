@@ -102,4 +102,22 @@ describe("board stream reducer", () => {
     });
     expect(revoked?.grants).toEqual([{ ...grant, revokedAt: "2026-08-17T01:00:00.000Z" }]);
   });
+
+  it("applies project authority defaults independently of thread grants", () => {
+    const snapshot = { projectId, sequence: 1, objects: [object], relationships: [], grants: [] };
+    const result = applyBoardStreamItem(snapshot, {
+      kind: "authority-upserted",
+      projectId,
+      sequence: 2,
+      commandId: CommandId.make("policy-1"),
+      authority: {
+        projectId,
+        defaultReadScope: "board",
+        defaultWriteAuthority: "own",
+        updatedAt: object.updatedAt,
+      },
+    });
+    expect(result?.authority?.defaultReadScope).toBe("board");
+    expect(result?.grants).toEqual([]);
+  });
 });

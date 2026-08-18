@@ -6,7 +6,11 @@ export function projectBoardEvent(
   objects: ReadonlyArray<BoardObject>,
   event: BoardDomainEvent,
 ): ReadonlyArray<BoardObject> {
-  if (event.type === "board.relationship-created" || event.type === "board.grant-updated") {
+  if (
+    event.type === "board.relationship-created" ||
+    event.type === "board.grant-updated" ||
+    event.type === "board.authority-updated"
+  ) {
     return objects;
   }
   if (event.type === "board.object-updated") {

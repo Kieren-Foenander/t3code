@@ -251,6 +251,27 @@ it.layer(TestLayer)("BoardService", (it) => {
       });
       const revokedView = yield* board.getAccessibleSnapshot(ThreadId.make("thread-2"));
       assert.ok(!revokedView.objects.some((object) => object.id === privateShapeId));
+
+      yield* board.dispatch({
+        type: "board.project-authority.set",
+        commandId: CommandId.make("set-project-board-defaults"),
+        projectId,
+        defaultReadScope: "board",
+        defaultWriteAuthority: "board",
+        createdAt: "2026-08-17T00:10:00.000Z",
+      });
+      const defaultBoardView = yield* board.getAccessibleSnapshot(ThreadId.make("thread-2"));
+      assert.strictEqual(defaultBoardView.authority?.defaultReadScope, "board");
+      assert.ok(defaultBoardView.objects.some((object) => object.id === privateShapeId));
+      yield* board.dispatchAsThread(ThreadId.make("thread-2"), {
+        type: "board.object.move",
+        commandId: CommandId.make("move-with-project-default"),
+        projectId,
+        objectId: privateShapeId,
+        position: { x: 1200, y: 720 },
+        expectedRevision: 1,
+        createdAt: "2026-08-17T00:11:00.000Z",
+      });
     }),
   );
 

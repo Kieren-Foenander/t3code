@@ -3,6 +3,7 @@ import {
   BoardGrant,
   BoardObject,
   BoardOperationError,
+  BoardProjectAuthority,
   BoardRelationship,
   BoardSnapshot,
   BOARD_WHOLE_BOARD_OBJECT_ID,
@@ -29,6 +30,7 @@ import { projectBoardEvent } from "./projector.ts";
 type BoardObjectRow = { readonly payloadJson: string };
 type BoardRelationshipRow = { readonly payloadJson: string };
 type BoardGrantRow = { readonly payloadJson: string };
+type BoardAuthorityRow = { readonly payloadJson: string };
 type BoardEventRow = {
   readonly sequence: number;
   readonly projectId: string;
@@ -64,12 +66,15 @@ export class BoardService extends Context.Service<BoardService, BoardServiceShap
 const BoardObjectJson = Schema.fromJsonString(BoardObject);
 const BoardRelationshipJson = Schema.fromJsonString(BoardRelationship);
 const BoardGrantJson = Schema.fromJsonString(BoardGrant);
+const BoardAuthorityJson = Schema.fromJsonString(BoardProjectAuthority);
 const decodeBoardObject = Schema.decodeUnknownSync(BoardObjectJson);
 const encodeBoardObject = Schema.encodeSync(BoardObjectJson);
 const decodeBoardRelationship = Schema.decodeUnknownSync(BoardRelationshipJson);
 const encodeBoardRelationship = Schema.encodeSync(BoardRelationshipJson);
 const decodeBoardGrant = Schema.decodeUnknownSync(BoardGrantJson);
 const encodeBoardGrant = Schema.encodeSync(BoardGrantJson);
+const decodeBoardAuthority = Schema.decodeUnknownSync(BoardAuthorityJson);
+const encodeBoardAuthority = Schema.encodeSync(BoardAuthorityJson);
 const isBoardOperationError = Schema.is(BoardOperationError);
 
 const persistenceError = (cause: unknown) =>
@@ -118,6 +123,23 @@ export const layer = Layer.effect(
       return rows.map((row) => decodeBoardGrant(row.payloadJson));
     });
 
+    const loadAuthority = Effect.fn("BoardService.loadAuthority")(function* (projectId: ProjectId) {
+      const rows = yield* sql<BoardAuthorityRow>`
+        SELECT payload_json AS "payloadJson"
+        FROM projection_board_authority
+        WHERE project_id = ${projectId}
+        LIMIT 1
+      `;
+      return rows[0]
+        ? decodeBoardAuthority(rows[0].payloadJson)
+        : {
+            projectId,
+            defaultReadScope: "own" as const,
+            defaultWriteAuthority: "own" as const,
+            updatedAt: "1970-01-01T00:00:00.000Z",
+          };
+    });
+
     const requireProject = Effect.fn("BoardService.requireProject")(function* (
       projectId: ProjectId,
     ) {
@@ -155,6 +177,7 @@ export const layer = Layer.effect(
           let objects: ReadonlyArray<BoardObject> = yield* loadObjects(command.projectId);
           const relationships = yield* loadRelationships(command.projectId);
           const grants = yield* loadGrants(command.projectId);
+          const authority = yield* loadAuthority(command.projectId);
           const threadRows =
             command.type === "board.thread-frames.ensure" ||
             command.type === "board.thread-frame.place" ||
@@ -178,6 +201,7 @@ export const layer = Layer.effect(
                 objects,
                 relationships,
                 grants,
+                authority,
                 threadIds: threadRows.map((row) => ThreadId.make(row.threadId)),
               }),
             catch: (cause) => (isBoardOperationError(cause) ? cause : persistenceError(cause)),
@@ -189,6 +213,34 @@ export const layer = Layer.effect(
               `)[0]?.sequence ?? 0;
 
           for (const event of events) {
+            if (event.type === "board.authority-updated") {
+              const payloadJson = encodeBoardAuthority(event.authority);
+              const inserted = yield* sql<{ readonly sequence: number }>`
+                INSERT INTO board_events (
+                  project_id, command_id, event_type, payload_json, occurred_at
+                ) VALUES (
+                  ${command.projectId}, ${command.commandId}, ${event.type},
+                  ${payloadJson}, ${event.occurredAt}
+                )
+                RETURNING sequence
+              `;
+              lastSequence = inserted[0]?.sequence ?? lastSequence;
+              yield* sql`
+                INSERT INTO projection_board_authority (project_id, payload_json, updated_sequence)
+                VALUES (${command.projectId}, ${payloadJson}, ${lastSequence})
+                ON CONFLICT(project_id) DO UPDATE SET
+                  payload_json = excluded.payload_json,
+                  updated_sequence = excluded.updated_sequence
+              `;
+              deltas.push({
+                kind: "authority-upserted",
+                projectId: command.projectId,
+                sequence: lastSequence,
+                commandId: command.commandId,
+                authority: event.authority,
+              });
+              continue;
+            }
             if (event.type === "board.grant-updated") {
               const payloadJson = encodeBoardGrant(event.grant);
               const inserted = yield* sql<{ readonly sequence: number }>`
@@ -345,6 +397,7 @@ export const layer = Layer.effect(
         const objects = yield* loadObjects(projectId);
         const relationships = yield* loadRelationships(projectId);
         const grants = yield* loadGrants(projectId);
+        const authority = yield* loadAuthority(projectId);
         const sequence =
           (yield* sql<{ readonly sequence: number }>`
               SELECT COALESCE(MAX(sequence), 0) AS sequence
@@ -357,6 +410,7 @@ export const layer = Layer.effect(
           objects,
           relationships,
           grants,
+          authority,
         };
       }).pipe(
         Effect.mapError((cause) =>
@@ -391,14 +445,15 @@ export const layer = Layer.effect(
         (grant) => grant.objectId === BOARD_WHOLE_BOARD_OBJECT_ID,
       );
       const grantedIds = new Set(grants.map((grant) => grant.objectId));
-      const objects = wholeBoardGrant
-        ? snapshot.objects
-        : snapshot.objects.filter(
-            (object) =>
-              (object.kind === "thread-frame" && object.threadId === threadId) ||
-              ("originatingThreadId" in object && object.originatingThreadId === threadId) ||
-              grantedIds.has(object.id),
-          );
+      const objects =
+        wholeBoardGrant || snapshot.authority?.defaultReadScope === "board"
+          ? snapshot.objects
+          : snapshot.objects.filter(
+              (object) =>
+                (object.kind === "thread-frame" && object.threadId === threadId) ||
+                ("originatingThreadId" in object && object.originatingThreadId === threadId) ||
+                grantedIds.has(object.id),
+            );
       const visibleIds = new Set(objects.map((object) => object.id));
       return {
         ...snapshot,
@@ -440,6 +495,9 @@ export const layer = Layer.effect(
                 (grant) =>
                   grant.objectId === BOARD_WHOLE_BOARD_OBJECT_ID && grant.access === "edit",
               )
+                ? accessible.objects.map((object) => object.id)
+                : []),
+              ...(accessible.authority?.defaultWriteAuthority === "board"
                 ? accessible.objects.map((object) => object.id)
                 : []),
               ...accessible.grants
@@ -560,13 +618,21 @@ export const layer = Layer.effect(
                   commandId: CommandId.make(row.commandId),
                   grant: decodeBoardGrant(row.payloadJson),
                 }
-              : {
-                  kind: "object-upserted" as const,
-                  projectId: ProjectId.make(row.projectId),
-                  sequence: row.sequence,
-                  commandId: CommandId.make(row.commandId),
-                  object: decodeBoardObject(row.payloadJson),
-                },
+              : row.eventType === "board.authority-updated"
+                ? {
+                    kind: "authority-upserted" as const,
+                    projectId: ProjectId.make(row.projectId),
+                    sequence: row.sequence,
+                    commandId: CommandId.make(row.commandId),
+                    authority: decodeBoardAuthority(row.payloadJson),
+                  }
+                : {
+                    kind: "object-upserted" as const,
+                    projectId: ProjectId.make(row.projectId),
+                    sequence: row.sequence,
+                    commandId: CommandId.make(row.commandId),
+                    object: decodeBoardObject(row.payloadJson),
+                  },
         );
       }).pipe(
         Effect.mapError((cause) =>

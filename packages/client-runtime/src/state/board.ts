@@ -68,6 +68,9 @@ export function applyBoardStreamItem(
       ],
     };
   }
+  if (item.kind === "authority-upserted") {
+    return { ...current, sequence: item.sequence, authority: item.authority };
+  }
   return {
     ...current,
     sequence: item.sequence,
@@ -250,6 +253,11 @@ export function createEnvironmentBoardAtoms<R, E>(
     execute: (input: SetBoardThreadAuthorityInput) => setBoardThreadAuthority(input),
     scheduler,
   });
+  const setProjectAuthority = createEnvironmentCommand(runtime, {
+    label: "environment-data:commands:board:set-project-authority",
+    execute: (input: SetBoardProjectAuthorityInput) => setBoardProjectAuthority(input),
+    scheduler,
+  });
   return {
     stateAtom,
     stateValueAtom,
@@ -268,6 +276,7 @@ export function createEnvironmentBoardAtoms<R, E>(
     updateRelationship,
     setGrant,
     setAuthority,
+    setProjectAuthority,
   };
 }
 
@@ -676,6 +685,29 @@ export const setBoardThreadAuthority = Effect.fn("BoardCommands.setThreadAuthori
     projectId: input.projectId,
     threadId: input.threadId,
     access: input.access,
+    createdAt: DateTime.formatIso(yield* DateTime.now),
+  });
+});
+
+export interface SetBoardProjectAuthorityInput {
+  readonly projectId: ProjectId;
+  readonly defaultReadScope: "own" | "board";
+  readonly defaultWriteAuthority: "own" | "board";
+  readonly commandId?: CommandId;
+}
+
+export const setBoardProjectAuthority = Effect.fn("BoardCommands.setProjectAuthority")(function* (
+  input: SetBoardProjectAuthorityInput,
+) {
+  const crypto = yield* Crypto.Crypto;
+  const commandId =
+    input.commandId ?? (yield* crypto.randomUUIDv4.pipe(Effect.orDie, Effect.map(CommandId.make)));
+  return yield* request(BOARD_WS_METHODS.dispatchCommand, {
+    type: "board.project-authority.set",
+    commandId,
+    projectId: input.projectId,
+    defaultReadScope: input.defaultReadScope,
+    defaultWriteAuthority: input.defaultWriteAuthority,
     createdAt: DateTime.formatIso(yield* DateTime.now),
   });
 });
