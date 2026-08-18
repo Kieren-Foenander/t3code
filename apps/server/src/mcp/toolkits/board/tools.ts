@@ -180,12 +180,21 @@ export const BoardUpdateNoteTool = mutatingBoardTool(
 export const BoardPlaceTool = mutatingBoardTool(
   Tool.make("board_place", {
     description:
-      "Move an editable board object to an explicit position using its expected revision.",
-    parameters: Schema.Struct({
-      objectId: BoardObjectId,
-      position: BoardPoint,
-      expectedRevision: NonNegativeInt,
-    }),
+      "Move an editable object to explicit coordinates or relative to an accessible object. Relative placement resolves obvious collisions server-side.",
+    parameters: Schema.Union([
+      Schema.Struct({
+        objectId: BoardObjectId,
+        position: BoardPoint,
+        expectedRevision: NonNegativeInt,
+      }),
+      Schema.Struct({
+        objectId: BoardObjectId,
+        relativeToObjectId: BoardObjectId,
+        placement: Schema.Literals(["right", "below"]),
+        gap: Schema.optional(NonNegativeInt),
+        expectedRevision: NonNegativeInt,
+      }),
+    ]),
     success: BoardDispatchResult,
     failure: BoardOperationError,
     dependencies,

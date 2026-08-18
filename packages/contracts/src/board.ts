@@ -241,6 +241,7 @@ export const BoardMoveObjectCommand = Schema.Struct({
   projectId: ProjectId,
   objectId: BoardObjectId,
   position: BoardPoint,
+  resolveCollisions: Schema.optional(Schema.Boolean),
   expectedRevision: Schema.optional(BoardRevision),
   originatingThreadId: Schema.optional(ThreadId),
   originatingTurnId: Schema.optional(TurnId),
@@ -472,6 +473,7 @@ const BoardBatchMoveOperation = Schema.Struct({
   type: Schema.Literal("object.move"),
   objectId: BoardObjectId,
   position: BoardPoint,
+  resolveCollisions: Schema.optional(Schema.Boolean),
   expectedRevision: BoardRevision,
 });
 const BoardBatchUpdateNoteOperation = Schema.Struct({

@@ -930,16 +930,23 @@ export function BoardWorkspace({ environmentId, projectId }: BoardWorkspaceProps
         grant.revokedAt === null,
     );
     if (explicit) return explicit.access;
+    if (wholeBoardGrant?.access === "edit") return "edit";
+    if (wholeBoardGrant?.access === "read") return "read";
+    if (projectAuthority.defaultWriteAuthority === "board") return "edit";
+    if (projectAuthority.defaultReadScope === "board") return "read";
+    const explicitlyDetached = board.snapshot?.grants.some(
+      (grant) =>
+        grant.threadId === activeThreadId &&
+        grant.objectId === object.id &&
+        grant.revokedAt !== null,
+    );
+    if (explicitlyDetached) return undefined;
     if (
       (object.kind === "thread-frame" && object.threadId === activeThreadId) ||
       object.originatingThreadId === activeThreadId
     ) {
       return "edit";
     }
-    if (wholeBoardGrant?.access === "edit") return "edit";
-    if (wholeBoardGrant?.access === "read") return "read";
-    if (projectAuthority.defaultWriteAuthority === "board") return "edit";
-    if (projectAuthority.defaultReadScope === "board") return "read";
     return undefined;
   };
   const toggleProjectDefault = (kind: "read" | "write") => {

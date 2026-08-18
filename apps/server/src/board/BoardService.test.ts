@@ -150,6 +150,30 @@ it.layer(TestLayer)("BoardService", (it) => {
       assert.ok(ownerView.objects.some((object) => object.id === noteId));
       assert.ok(!siblingView.objects.some((object) => object.id === noteId));
 
+      yield* board.dispatch({
+        type: "board.grant.revoke",
+        commandId: CommandId.make("detach-owner-note"),
+        projectId,
+        threadId: ThreadId.make("thread-1"),
+        objectIds: [noteId],
+        access: "edit",
+        createdAt: "2026-08-17T00:03:10.000Z",
+      });
+      assert.ok(
+        !(yield* board.getAccessibleSnapshot(ThreadId.make("thread-1"))).objects.some(
+          (object) => object.id === noteId,
+        ),
+      );
+      yield* board.dispatch({
+        type: "board.grant.set",
+        commandId: CommandId.make("reattach-owner-note"),
+        projectId,
+        threadId: ThreadId.make("thread-1"),
+        objectIds: [noteId],
+        access: "edit",
+        createdAt: "2026-08-17T00:03:20.000Z",
+      });
+
       const denied = yield* Effect.result(
         board.dispatchAsThread(ThreadId.make("thread-2"), {
           type: "board.note.update",

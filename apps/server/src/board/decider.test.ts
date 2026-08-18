@@ -331,6 +331,76 @@ describe("board decider", () => {
     expect(events.at(-1)).toMatchObject({ revision: 3, position: { x: 90, y: 120 } });
   });
 
+  it("resolves obvious collisions for created and relative agent artifacts", () => {
+    const existing = {
+      id: BoardObjectId.make("note:existing"),
+      projectId,
+      kind: "text-note" as const,
+      position: { x: 520, y: 0 },
+      size: { width: 320, height: 240 },
+      title: "Existing",
+      text: "Existing",
+      revision: 1,
+      createdAt: now,
+      updatedAt: now,
+      tombstonedAt: null,
+    };
+    const created = decideBoardCommand(
+      {
+        type: "board.diagram-shape.create",
+        commandId: CommandId.make("create-collision-shape"),
+        projectId,
+        objectId: BoardObjectId.make("shape:collision"),
+        position: { x: 520, y: 0 },
+        shape: "rectangle",
+        label: "Resolved",
+        originatingThreadId: ThreadId.make("thread-1"),
+        createdAt: now,
+      },
+      { objects: [existing], threadIds: [ThreadId.make("thread-1")] },
+    );
+    expect(created).toMatchObject([
+      { type: "board.object-created", object: { position: { x: 520, y: 280 } } },
+      { type: "board.grant-updated", grant: { access: "edit" } },
+    ]);
+
+    const moved = decideBoardCommand(
+      {
+        type: "board.object.move",
+        commandId: CommandId.make("move-relative-collision"),
+        projectId,
+        objectId: BoardObjectId.make("shape:moving"),
+        position: { x: 520, y: 0 },
+        resolveCollisions: true,
+        expectedRevision: 1,
+        createdAt: now,
+      },
+      {
+        objects: [
+          existing,
+          {
+            id: BoardObjectId.make("shape:moving"),
+            projectId,
+            kind: "diagram-shape",
+            position: { x: 0, y: 0 },
+            size: { width: 220, height: 120 },
+            shape: "rectangle",
+            label: "Moving",
+            revision: 1,
+            createdAt: now,
+            updatedAt: now,
+            tombstonedAt: null,
+          },
+        ],
+        threadIds: [],
+      },
+    );
+    expect(moved[0]).toMatchObject({
+      type: "board.object-moved",
+      position: { x: 520, y: 280 },
+    });
+  });
+
   it("updates arbitrary objects and relationships inside one atomic batch", () => {
     const shapeId = BoardObjectId.make("shape:batch");
     const noteId = BoardObjectId.make("note:batch-target");

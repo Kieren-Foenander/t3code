@@ -175,18 +175,44 @@ const handlers = {
       }),
     ),
   board_place: (input) =>
-    invoke("place", ({ scope, board, snapshot, commandId, createdAt }) =>
-      board.dispatchAsThread(scope.threadId, {
+    invoke("place", ({ scope, board, snapshot, commandId, createdAt }) => {
+      const relativeTarget =
+        "relativeToObjectId" in input
+          ? snapshot.objects.find((object) => object.id === input.relativeToObjectId)
+          : undefined;
+      if ("relativeToObjectId" in input && !relativeTarget) {
+        return Effect.fail(
+          new BoardOperationError({
+            reason: "object-not-found",
+            message: `Board object ${input.relativeToObjectId} was not found.`,
+          }),
+        );
+      }
+      const gap = "gap" in input ? (input.gap ?? 80) : 0;
+      const position =
+        "position" in input
+          ? input.position
+          : input.placement === "right"
+            ? {
+                x: relativeTarget!.position.x + relativeTarget!.size.width + gap,
+                y: relativeTarget!.position.y,
+              }
+            : {
+                x: relativeTarget!.position.x,
+                y: relativeTarget!.position.y + relativeTarget!.size.height + gap,
+              };
+      return board.dispatchAsThread(scope.threadId, {
         type: "board.object.move",
         commandId,
         projectId: snapshot.projectId,
         objectId: input.objectId,
-        position: input.position,
+        position,
+        ...("relativeToObjectId" in input ? { resolveCollisions: true } : {}),
         expectedRevision: input.expectedRevision,
         ...operationProvenance(scope, commandId),
         createdAt,
-      }),
-    ),
+      });
+    }),
   board_update_object: (input) =>
     invoke("update-object", ({ scope, board, snapshot, commandId, createdAt }) => {
       const current = snapshot.objects.find((object) => object.id === input.objectId);

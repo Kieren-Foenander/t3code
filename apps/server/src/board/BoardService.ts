@@ -645,6 +645,11 @@ export const layer = Layer.effect(
     });
 
     const filterSnapshotForThread = (snapshot: BoardSnapshot, threadId: ThreadId) => {
+      const revokedIds = new Set(
+        snapshot.grants.flatMap((grant) =>
+          grant.threadId === threadId && grant.revokedAt !== null ? [grant.objectId] : [],
+        ),
+      );
       const grants = snapshot.grants.filter(
         (grant) => grant.threadId === threadId && grant.revokedAt === null,
       );
@@ -658,7 +663,9 @@ export const layer = Layer.effect(
           : snapshot.objects.filter(
               (object) =>
                 (object.kind === "thread-frame" && object.threadId === threadId) ||
-                ("originatingThreadId" in object && object.originatingThreadId === threadId) ||
+                ("originatingThreadId" in object &&
+                  object.originatingThreadId === threadId &&
+                  !revokedIds.has(object.id)) ||
                 grantedIds.has(object.id),
             );
       const visibleIds = new Set(objects.map((object) => object.id));

@@ -79,6 +79,32 @@ export interface BoardDecisionState {
 
 const THREAD_FRAME_WIDTH = 440;
 const THREAD_FRAME_HEIGHT = 560;
+const ARTIFACT_COLLISION_GAP = 40;
+
+function resolveArtifactPosition(
+  requested: BoardPoint,
+  size: { readonly width: number; readonly height: number },
+  objects: ReadonlyArray<BoardObject>,
+): BoardPoint {
+  let position = requested;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const collision = objects.find(
+      (object) =>
+        object.tombstonedAt === null &&
+        object.kind !== "group" &&
+        position.x < object.position.x + object.size.width &&
+        position.x + size.width > object.position.x &&
+        position.y < object.position.y + object.size.height &&
+        position.y + size.height > object.position.y,
+    );
+    if (!collision) return position;
+    position = {
+      x: requested.x,
+      y: collision.position.y + collision.size.height + ARTIFACT_COLLISION_GAP,
+    };
+  }
+  return position;
+}
 const THREAD_FRAME_GAP = 80;
 const THREAD_FRAME_COLUMNS = 4;
 
@@ -436,12 +462,13 @@ export function decideBoardCommand(
         message: `Board object ${command.objectId} already exists.`,
       });
     }
+    const size = { width: 320, height: 240 };
     const object: BoardObject = {
       id: command.objectId,
       kind: "text-note",
       projectId: command.projectId,
-      position: command.position,
-      size: { width: 320, height: 240 },
+      position: resolveArtifactPosition(command.position, size, state.objects),
+      size,
       title: command.title,
       text: command.text,
       ...(command.originatingProviderInstanceId === undefined
@@ -511,12 +538,13 @@ export function decideBoardCommand(
         message: "File reference line ranges are one-based and must end after they start.",
       });
     }
+    const size = { width: 440, height: 320 };
     const object: BoardObject = {
       id: command.objectId,
       kind: "file-reference",
       projectId: command.projectId,
-      position: command.position,
-      size: { width: 440, height: 320 },
+      position: resolveArtifactPosition(command.position, size, state.objects),
+      size,
       path: command.path,
       ...(command.startLine === undefined ? {} : { startLine: command.startLine }),
       ...(command.endLine === undefined ? {} : { endLine: command.endLine }),
@@ -569,7 +597,11 @@ export function decideBoardCommand(
             id: command.objectId,
             kind: "diagram-shape",
             projectId: command.projectId,
-            position: command.position,
+            position: resolveArtifactPosition(
+              command.position,
+              { width: 220, height: 120 },
+              state.objects,
+            ),
             size: { width: 220, height: 120 },
             shape: command.shape,
             label: command.label,
@@ -600,6 +632,24 @@ export function decideBoardCommand(
         occurredAt: command.createdAt,
         object,
       },
+      ...(command.originatingThreadId === undefined
+        ? []
+        : [
+            {
+              type: "board.grant-updated" as const,
+              projectId: command.projectId,
+              commandId: command.commandId,
+              occurredAt: command.createdAt,
+              grant: {
+                projectId: command.projectId,
+                threadId: command.originatingThreadId,
+                objectId: command.objectId,
+                access: "edit" as const,
+                createdAt: command.createdAt,
+                revokedAt: null,
+              },
+            },
+          ]),
     ];
   }
 
@@ -1004,7 +1054,13 @@ export function decideBoardCommand(
       commandId: command.commandId,
       occurredAt: command.createdAt,
       objectId: command.objectId,
-      position: command.position,
+      position: command.resolveCollisions
+        ? resolveArtifactPosition(
+            command.position,
+            object.size,
+            state.objects.filter((candidate) => candidate.id !== object.id),
+          )
+        : command.position,
       revision: object.revision + 1,
     },
   ];
