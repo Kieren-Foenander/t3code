@@ -1,14 +1,15 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
-import { useMemo } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Pressable, ScrollView, useWindowDimensions, View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
 import { LoadingScreen } from "../../components/LoadingScreen";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useEnvironmentBoard } from "../../state/board";
 import { useProject, useThreadShells } from "../../state/entities";
+import { mobileBoardContentSize, mobileThreadBoardStatus } from "./boardLayout";
 
 type Props = StaticScreenProps<{ environmentId: string; projectId: string }>;
 
@@ -23,6 +24,10 @@ export function ProjectBoardRouteScreen({ route }: Props) {
   const project = useProject(scopeProjectRef(environmentId, projectId));
   const threads = useThreadShells();
   const key = `${environmentId}:${projectId}`;
+  const viewport = useWindowDimensions();
+  const [selectedObjectId, setSelectedObjectId] = useState(
+    () => selectedObjectByBoard.get(key) ?? null,
+  );
   const objects = board.snapshot?.objects.filter((object) => object.tombstonedAt === null) ?? [];
   const threadsById = useMemo(
     () =>
@@ -35,8 +40,7 @@ export function ProjectBoardRouteScreen({ route }: Props) {
       ),
     [environmentId, projectId, threads],
   );
-  const width = Math.max(900, ...objects.map((object) => object.position.x + 340));
-  const height = Math.max(900, ...objects.map((object) => object.position.y + 240));
+  const { width, height } = mobileBoardContentSize(objects, viewport);
   const initialCamera = cameraByBoard.get(key) ?? { x: 0, y: 0 };
 
   if (!project || !board.snapshot) {
@@ -63,7 +67,7 @@ export function ProjectBoardRouteScreen({ route }: Props) {
         >
           <View style={{ width, height }} className="bg-screen">
             {objects.map((object) => {
-              const selected = selectedObjectByBoard.get(key) === object.id;
+              const selected = selectedObjectId === object.id;
               if (object.kind === "thread-frame") {
                 const thread = threadsById.get(object.threadId);
                 return (
@@ -72,12 +76,14 @@ export function ProjectBoardRouteScreen({ route }: Props) {
                     accessibilityRole="button"
                     accessibilityLabel={`Thread ${thread?.title ?? object.threadId}`}
                     accessibilityHint="Opens the full thread timeline and composer"
+                    accessibilityState={{ selected }}
                     className={`absolute h-40 w-72 rounded-2xl border bg-surface p-4 ${
                       selected ? "border-accent" : "border-border"
                     }`}
                     style={{ left: object.position.x, top: object.position.y }}
                     onPress={() => {
                       selectedObjectByBoard.set(key, object.id);
+                      setSelectedObjectId(object.id);
                       navigation.navigate("Thread", {
                         environmentId,
                         threadId: object.threadId,
@@ -88,11 +94,16 @@ export function ProjectBoardRouteScreen({ route }: Props) {
                       {thread?.title ?? "Untitled thread"}
                     </Text>
                     <Text className="mt-2 text-sm text-foreground-muted">
-                      {thread?.session?.status === "running"
-                        ? "Running"
-                        : thread?.settledAt
-                          ? "Complete"
-                          : "Waiting"}
+                      {mobileThreadBoardStatus({
+                        running: thread?.session?.status === "running",
+                        settled: Boolean(thread?.settledAt),
+                        blocked: Boolean(
+                          thread?.hasPendingApprovals || thread?.hasPendingUserInput,
+                        ),
+                        ...(thread?.planProgress?.step
+                          ? { planStep: thread.planProgress.step }
+                          : {}),
+                      })}
                     </Text>
                     <Text className="mt-auto text-xs text-foreground-tertiary">
                       Tap for timeline and composer
@@ -121,11 +132,15 @@ export function ProjectBoardRouteScreen({ route }: Props) {
                   key={object.id}
                   accessibilityRole="button"
                   accessibilityLabel={`${title}: ${summary}`}
+                  accessibilityState={{ selected }}
                   className={`absolute h-32 w-64 rounded-xl border bg-surface p-4 ${
                     selected ? "border-accent" : "border-border"
                   }`}
                   style={{ left: object.position.x, top: object.position.y }}
-                  onPress={() => selectedObjectByBoard.set(key, object.id)}
+                  onPress={() => {
+                    selectedObjectByBoard.set(key, object.id);
+                    setSelectedObjectId(object.id);
+                  }}
                 >
                   <Text className="text-sm font-t3-bold">{title}</Text>
                   <Text className="mt-2 text-sm text-foreground-muted" numberOfLines={3}>
