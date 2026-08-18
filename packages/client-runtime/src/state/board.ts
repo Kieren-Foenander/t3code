@@ -200,6 +200,16 @@ export function createEnvironmentBoardAtoms<R, E>(
       key: ({ environmentId, input }) => JSON.stringify([environmentId, input.objectId]),
     },
   });
+  const updateObject = createEnvironmentCommand(runtime, {
+    label: "environment-data:commands:board:update-object",
+    execute: (input: UpdateBoardObjectInput) => updateBoardObject(input),
+    scheduler,
+  });
+  const promoteNote = createEnvironmentCommand(runtime, {
+    label: "environment-data:commands:board:promote-note",
+    execute: (input: PromoteBoardNoteInput) => promoteBoardNote(input),
+    scheduler,
+  });
   const setTombstoned = createEnvironmentCommand(runtime, {
     label: "environment-data:commands:board:set-tombstoned",
     execute: (input: SetBoardObjectTombstonedInput) => setBoardObjectTombstoned(input),
@@ -225,6 +235,11 @@ export function createEnvironmentBoardAtoms<R, E>(
     execute: (input: CreateBoardRelationshipInput) => createBoardRelationship(input),
     scheduler,
   });
+  const updateRelationship = createEnvironmentCommand(runtime, {
+    label: "environment-data:commands:board:update-relationship",
+    execute: (input: UpdateBoardRelationshipInput) => updateBoardRelationship(input),
+    scheduler,
+  });
   const setGrant = createEnvironmentCommand(runtime, {
     label: "environment-data:commands:board:set-grant",
     execute: (input: SetBoardGrantInput) => setBoardGrant(input),
@@ -243,11 +258,14 @@ export function createEnvironmentBoardAtoms<R, E>(
     ensureThreadFrames,
     createNote,
     updateNote,
+    updateObject,
+    promoteNote,
     setTombstoned,
     createFileReference,
     createDiagramShape,
     createGroup,
     createRelationship,
+    updateRelationship,
     setGrant,
     setAuthority,
   };
@@ -375,6 +393,70 @@ export const updateBoardNote = Effect.fn("BoardCommands.updateNote")(function* (
     objectId: input.objectId,
     title: input.title,
     text: input.text,
+    expectedRevision: input.expectedRevision,
+    createdAt: DateTime.formatIso(yield* DateTime.now),
+  });
+});
+
+export interface UpdateBoardObjectInput {
+  readonly projectId: ProjectId;
+  readonly objectId: BoardObjectId;
+  readonly expectedRevision: number;
+  readonly size?: BoardSize;
+  readonly frameSize?: "compact" | "standard" | "wide";
+  readonly title?: string;
+  readonly shape?: "rectangle" | "ellipse" | "diamond";
+  readonly label?: string;
+  readonly path?: string;
+  readonly startLine?: number | null;
+  readonly endLine?: number | null;
+  readonly checkpointRef?: CheckpointRef | null;
+  readonly commandId?: CommandId;
+}
+
+export const updateBoardObject = Effect.fn("BoardCommands.updateObject")(function* (
+  input: UpdateBoardObjectInput,
+) {
+  const crypto = yield* Crypto.Crypto;
+  const commandId =
+    input.commandId ?? (yield* crypto.randomUUIDv4.pipe(Effect.orDie, Effect.map(CommandId.make)));
+  return yield* request(BOARD_WS_METHODS.dispatchCommand, {
+    type: "board.object.update",
+    commandId,
+    projectId: input.projectId,
+    objectId: input.objectId,
+    expectedRevision: input.expectedRevision,
+    ...(input.size === undefined ? {} : { size: input.size }),
+    ...(input.frameSize === undefined ? {} : { frameSize: input.frameSize }),
+    ...(input.title === undefined ? {} : { title: input.title }),
+    ...(input.shape === undefined ? {} : { shape: input.shape }),
+    ...(input.label === undefined ? {} : { label: input.label }),
+    ...(input.path === undefined ? {} : { path: input.path }),
+    ...(input.startLine === undefined ? {} : { startLine: input.startLine }),
+    ...(input.endLine === undefined ? {} : { endLine: input.endLine }),
+    ...(input.checkpointRef === undefined ? {} : { checkpointRef: input.checkpointRef }),
+    createdAt: DateTime.formatIso(yield* DateTime.now),
+  });
+});
+
+export interface PromoteBoardNoteInput {
+  readonly projectId: ProjectId;
+  readonly objectId: BoardObjectId;
+  readonly expectedRevision: number;
+  readonly commandId?: CommandId;
+}
+
+export const promoteBoardNote = Effect.fn("BoardCommands.promoteNote")(function* (
+  input: PromoteBoardNoteInput,
+) {
+  const crypto = yield* Crypto.Crypto;
+  const commandId =
+    input.commandId ?? (yield* crypto.randomUUIDv4.pipe(Effect.orDie, Effect.map(CommandId.make)));
+  return yield* request(BOARD_WS_METHODS.dispatchCommand, {
+    type: "board.note.promote",
+    commandId,
+    projectId: input.projectId,
+    objectId: input.objectId,
     expectedRevision: input.expectedRevision,
     createdAt: DateTime.formatIso(yield* DateTime.now),
   });
@@ -517,6 +599,33 @@ export const createBoardRelationship = Effect.fn("BoardCommands.createRelationsh
     ...(input.label === undefined ? {} : { label: input.label }),
     sourceObjectId: input.sourceObjectId,
     targetObjectId: input.targetObjectId,
+    createdAt: DateTime.formatIso(yield* DateTime.now),
+  });
+});
+
+export interface UpdateBoardRelationshipInput {
+  readonly projectId: ProjectId;
+  readonly relationshipId: BoardRelationshipId;
+  readonly expectedRevision: number;
+  readonly label?: string | null;
+  readonly tombstoned?: boolean;
+  readonly commandId?: CommandId;
+}
+
+export const updateBoardRelationship = Effect.fn("BoardCommands.updateRelationship")(function* (
+  input: UpdateBoardRelationshipInput,
+) {
+  const crypto = yield* Crypto.Crypto;
+  const commandId =
+    input.commandId ?? (yield* crypto.randomUUIDv4.pipe(Effect.orDie, Effect.map(CommandId.make)));
+  return yield* request(BOARD_WS_METHODS.dispatchCommand, {
+    type: "board.relationship.update",
+    commandId,
+    projectId: input.projectId,
+    relationshipId: input.relationshipId,
+    expectedRevision: input.expectedRevision,
+    ...(input.label === undefined ? {} : { label: input.label }),
+    ...(input.tombstoned === undefined ? {} : { tombstoned: input.tombstoned }),
     createdAt: DateTime.formatIso(yield* DateTime.now),
   });
 });

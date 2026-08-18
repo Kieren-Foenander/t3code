@@ -778,6 +778,11 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       // browser tool calls used to lose the toolkit outright.
       yield* McpSessionRegistry.touchActiveMcpThread(input.threadId);
       const turn = yield* routed.adapter.sendTurn(input);
+      yield* McpSessionRegistry.setActiveMcpTurn(
+        input.threadId,
+        turn.turnId,
+        routed.adapter.provider,
+      );
       yield* directory.upsert({
         threadId: input.threadId,
         provider: routed.adapter.provider,

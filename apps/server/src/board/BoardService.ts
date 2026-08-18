@@ -491,7 +491,9 @@ export const layer = Layer.effect(
               }
               if (
                 command.type === "board.object.move" ||
+                command.type === "board.object.update" ||
                 command.type === "board.note.update" ||
+                command.type === "board.note.promote" ||
                 command.type === "board.object.tombstone" ||
                 command.type === "board.object.restore"
               ) {
@@ -501,6 +503,12 @@ export const layer = Layer.effect(
                 return (
                   editableIds.has(command.sourceObjectId) && readableIds.has(command.targetObjectId)
                 );
+              }
+              if (command.type === "board.relationship.update") {
+                const relationship = accessible.relationships.find(
+                  (candidate) => candidate.id === command.relationshipId,
+                );
+                return relationship !== undefined && editableIds.has(relationship.sourceObjectId);
               }
               if (command.type === "board.thread-frame.place") {
                 return command.threadId === threadId || command.parentThreadId === threadId;

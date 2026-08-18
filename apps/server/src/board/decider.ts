@@ -8,8 +8,10 @@ import {
   type BoardObject,
   type BoardPoint,
   type BoardRelationship,
+  type ProviderInstanceId,
   type ProjectId,
   type ThreadId,
+  type TurnId,
 } from "@t3tools/contracts";
 
 export type BoardDomainEvent =
@@ -63,6 +65,30 @@ const THREAD_FRAME_HEIGHT = 560;
 const THREAD_FRAME_GAP = 80;
 const THREAD_FRAME_COLUMNS = 4;
 
+const provenance = (
+  command: Readonly<
+    Partial<{
+      originatingThreadId: ThreadId | undefined;
+      originatingTurnId: TurnId | undefined;
+      originatingProviderInstanceId: ProviderInstanceId | undefined;
+      originatingOperationId: BoardCommand["commandId"] | undefined;
+    }>
+  >,
+) => ({
+  ...(command.originatingThreadId === undefined
+    ? {}
+    : { originatingThreadId: command.originatingThreadId }),
+  ...(command.originatingTurnId === undefined
+    ? {}
+    : { originatingTurnId: command.originatingTurnId }),
+  ...(command.originatingProviderInstanceId === undefined
+    ? {}
+    : { originatingProviderInstanceId: command.originatingProviderInstanceId }),
+  ...(command.originatingOperationId === undefined
+    ? {}
+    : { originatingOperationId: command.originatingOperationId }),
+});
+
 export function decideBoardCommand(
   command: BoardCommand,
   state: BoardDecisionState,
@@ -81,6 +107,13 @@ export function decideBoardCommand(
               commandId: command.commandId,
               projectId: command.projectId,
               originatingThreadId: command.originatingThreadId,
+              ...(command.originatingTurnId === undefined
+                ? {}
+                : { originatingTurnId: command.originatingTurnId }),
+              ...(command.originatingProviderInstanceId === undefined
+                ? {}
+                : { originatingProviderInstanceId: command.originatingProviderInstanceId }),
+              originatingOperationId: command.originatingOperationId ?? command.commandId,
               createdAt: command.createdAt,
             }
           : operation.type === "shape.create"
@@ -90,6 +123,13 @@ export function decideBoardCommand(
                 commandId: command.commandId,
                 projectId: command.projectId,
                 originatingThreadId: command.originatingThreadId,
+                ...(command.originatingTurnId === undefined
+                  ? {}
+                  : { originatingTurnId: command.originatingTurnId }),
+                ...(command.originatingProviderInstanceId === undefined
+                  ? {}
+                  : { originatingProviderInstanceId: command.originatingProviderInstanceId }),
+                originatingOperationId: command.originatingOperationId ?? command.commandId,
                 createdAt: command.createdAt,
               }
             : operation.type === "object.move"
@@ -114,6 +154,16 @@ export function decideBoardCommand(
                       type: "board.relationship.create",
                       commandId: command.commandId,
                       projectId: command.projectId,
+                      originatingThreadId: command.originatingThreadId,
+                      ...(command.originatingTurnId === undefined
+                        ? {}
+                        : { originatingTurnId: command.originatingTurnId }),
+                      ...(command.originatingProviderInstanceId === undefined
+                        ? {}
+                        : {
+                            originatingProviderInstanceId: command.originatingProviderInstanceId,
+                          }),
+                      originatingOperationId: command.originatingOperationId ?? command.commandId,
                       createdAt: command.createdAt,
                     }
                   : {
@@ -128,8 +178,8 @@ export function decideBoardCommand(
                     };
       const nestedEvents = decideBoardCommand(nested, {
         objects,
-        relationships,
-        grants,
+        relationships: relationships ?? [],
+        grants: grants ?? [],
         threadIds: state.threadIds,
       });
       events.push(...nestedEvents);
@@ -303,12 +353,7 @@ export function decideBoardCommand(
       size: { width: 320, height: 240 },
       title: command.title,
       text: command.text,
-      ...(command.originatingThreadId === undefined
-        ? {}
-        : { originatingThreadId: command.originatingThreadId }),
-      ...(command.originatingTurnId === undefined
-        ? {}
-        : { originatingTurnId: command.originatingTurnId }),
+      ...provenance(command),
       revision: 1,
       createdAt: command.createdAt,
       updatedAt: command.createdAt,
@@ -370,12 +415,7 @@ export function decideBoardCommand(
       ...(command.startLine === undefined ? {} : { startLine: command.startLine }),
       ...(command.endLine === undefined ? {} : { endLine: command.endLine }),
       ...(command.checkpointRef === undefined ? {} : { checkpointRef: command.checkpointRef }),
-      ...(command.originatingThreadId === undefined
-        ? {}
-        : { originatingThreadId: command.originatingThreadId }),
-      ...(command.originatingTurnId === undefined
-        ? {}
-        : { originatingTurnId: command.originatingTurnId }),
+      ...provenance(command),
       revision: 1,
       createdAt: command.createdAt,
       updatedAt: command.createdAt,
@@ -427,12 +467,7 @@ export function decideBoardCommand(
             size: { width: 220, height: 120 },
             shape: command.shape,
             label: command.label,
-            ...(command.originatingThreadId === undefined
-              ? {}
-              : { originatingThreadId: command.originatingThreadId }),
-            ...(command.originatingTurnId === undefined
-              ? {}
-              : { originatingTurnId: command.originatingTurnId }),
+            ...provenance(command),
             revision: 1,
             createdAt: command.createdAt,
             updatedAt: command.createdAt,
@@ -445,12 +480,7 @@ export function decideBoardCommand(
             position: command.position,
             size: command.size,
             title: command.title,
-            ...(command.originatingThreadId === undefined
-              ? {}
-              : { originatingThreadId: command.originatingThreadId }),
-            ...(command.originatingTurnId === undefined
-              ? {}
-              : { originatingTurnId: command.originatingTurnId }),
+            ...provenance(command),
             revision: 1,
             createdAt: command.createdAt,
             updatedAt: command.createdAt,
@@ -493,10 +523,50 @@ export function decideBoardCommand(
           ...(command.label === undefined ? {} : { label: command.label }),
           sourceObjectId: command.sourceObjectId,
           targetObjectId: command.targetObjectId,
+          ...provenance(command),
           revision: 1,
           createdAt: command.createdAt,
           updatedAt: command.createdAt,
           tombstonedAt: null,
+        },
+      },
+    ];
+  }
+
+  if (command.type === "board.relationship.update") {
+    const relationship = (state.relationships ?? []).find(
+      (candidate) => candidate.id === command.relationshipId,
+    );
+    if (!relationship || relationship.tombstonedAt !== null) {
+      throw new BoardOperationError({
+        reason: "object-not-found",
+        message: `Board relationship ${command.relationshipId} was not found.`,
+      });
+    }
+    if (relationship.revision !== command.expectedRevision) {
+      throw new BoardOperationError({
+        reason: "revision-conflict",
+        message: "The board relationship changed before this operation was committed.",
+        expectedRevision: command.expectedRevision,
+        actualRevision: relationship.revision,
+      });
+    }
+    return [
+      {
+        type: "board.relationship-created",
+        projectId: command.projectId,
+        commandId: command.commandId,
+        occurredAt: command.createdAt,
+        relationship: {
+          ...relationship,
+          ...(command.label === undefined
+            ? {}
+            : command.label === null
+              ? { label: undefined }
+              : { label: command.label }),
+          revision: relationship.revision + 1,
+          updatedAt: command.createdAt,
+          tombstonedAt: command.tombstoned === true ? command.createdAt : null,
         },
       },
     ];
@@ -663,6 +733,104 @@ export function decideBoardCommand(
           revision: object.revision + 1,
           updatedAt: command.createdAt,
         },
+      },
+    ];
+  }
+
+  if (command.type === "board.note.promote") {
+    if (object.kind !== "text-note") {
+      throw new BoardOperationError({
+        reason: "object-not-found",
+        message: `Board object ${command.objectId} is not a note.`,
+      });
+    }
+    return [
+      {
+        type: "board.object-updated",
+        projectId: command.projectId,
+        commandId: command.commandId,
+        occurredAt: command.createdAt,
+        object: {
+          ...object,
+          promotedAt: command.createdAt,
+          revision: object.revision + 1,
+          updatedAt: command.createdAt,
+        },
+      },
+    ];
+  }
+
+  if (command.type === "board.object.update") {
+    if (command.path !== undefined) {
+      if (
+        command.path.startsWith("/") ||
+        /^[A-Za-z]:/.test(command.path) ||
+        command.path.split(/[\\/]/).includes("..")
+      ) {
+        throw new BoardOperationError({
+          reason: "invalid-path",
+          message: "File references must stay inside the project workspace.",
+        });
+      }
+    }
+    const updated: BoardObject = (() => {
+      if (object.kind === "thread-frame") {
+        return {
+          ...object,
+          ...(command.size === undefined ? {} : { size: command.size }),
+          ...(command.frameSize === undefined ? {} : { frameSize: command.frameSize }),
+        };
+      }
+      if (object.kind === "text-note") {
+        return {
+          ...object,
+          ...(command.size === undefined ? {} : { size: command.size }),
+          ...(command.title === undefined ? {} : { title: command.title }),
+        };
+      }
+      if (object.kind === "diagram-shape") {
+        return {
+          ...object,
+          ...(command.size === undefined ? {} : { size: command.size }),
+          ...(command.shape === undefined ? {} : { shape: command.shape }),
+          ...(command.label === undefined ? {} : { label: command.label }),
+        };
+      }
+      if (object.kind === "group") {
+        return {
+          ...object,
+          ...(command.size === undefined ? {} : { size: command.size }),
+          ...(command.title === undefined ? {} : { title: command.title }),
+        };
+      }
+      return {
+        ...object,
+        ...(command.size === undefined ? {} : { size: command.size }),
+        ...(command.path === undefined ? {} : { path: command.path }),
+        ...(command.startLine === undefined
+          ? {}
+          : command.startLine === null
+            ? { startLine: undefined }
+            : { startLine: command.startLine }),
+        ...(command.endLine === undefined
+          ? {}
+          : command.endLine === null
+            ? { endLine: undefined }
+            : { endLine: command.endLine }),
+        ...(command.checkpointRef === undefined
+          ? {}
+          : command.checkpointRef === null
+            ? { checkpointRef: undefined }
+            : { checkpointRef: command.checkpointRef }),
+      };
+    })();
+    return [
+      {
+        type: "board.object-updated",
+        projectId: command.projectId,
+        commandId: command.commandId,
+        occurredAt: command.createdAt,
+        object: { ...updated, revision: object.revision + 1, updatedAt: command.createdAt },
       },
     ];
   }

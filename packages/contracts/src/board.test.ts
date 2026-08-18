@@ -91,3 +91,30 @@ it.effect("rejects non-positive board object dimensions", () =>
     assert.strictEqual(result._tag, "Failure");
   }),
 );
+
+it.effect("decodes revision-aware artifact and relationship edits", () =>
+  Effect.gen(function* () {
+    const resize = yield* Schema.decodeUnknownEffect(BoardCommand)({
+      type: "board.object.update",
+      commandId: "resize-1",
+      projectId: "project-1",
+      objectId: "group:1",
+      size: { width: 800, height: 600 },
+      title: "System map",
+      expectedRevision: 4,
+      createdAt: "2026-08-17T00:00:00.000Z",
+    });
+    const relationship = yield* Schema.decodeUnknownEffect(BoardCommand)({
+      type: "board.relationship.update",
+      commandId: "relationship-1",
+      projectId: "project-1",
+      relationshipId: "relationship:1",
+      label: null,
+      tombstoned: true,
+      expectedRevision: 2,
+      createdAt: "2026-08-17T00:00:00.000Z",
+    });
+    assert.strictEqual(resize.type, "board.object.update");
+    assert.strictEqual(relationship.type, "board.relationship.update");
+  }),
+);

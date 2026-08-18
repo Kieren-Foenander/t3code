@@ -10,6 +10,7 @@ import {
   TurnId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { ProviderInstanceId } from "./providerInstance.ts";
 
 export const BOARD_WS_METHODS = {
   dispatchCommand: "board.dispatchCommand",
@@ -44,6 +45,10 @@ const BoardObjectBase = {
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   tombstonedAt: Schema.NullOr(IsoDateTime),
+  originatingThreadId: Schema.optional(ThreadId),
+  originatingTurnId: Schema.optional(TurnId),
+  originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingOperationId: Schema.optional(CommandId),
 } as const;
 
 export const BoardThreadFrame = Schema.Struct({
@@ -59,8 +64,7 @@ export const BoardTextNote = Schema.Struct({
   kind: Schema.Literal("text-note"),
   title: TrimmedNonEmptyString,
   text: Schema.String,
-  originatingThreadId: Schema.optional(ThreadId),
-  originatingTurnId: Schema.optional(TurnId),
+  promotedAt: Schema.optional(IsoDateTime),
 });
 export type BoardTextNote = typeof BoardTextNote.Type;
 
@@ -71,8 +75,6 @@ export const BoardFileReference = Schema.Struct({
   startLine: Schema.optional(NonNegativeInt),
   endLine: Schema.optional(NonNegativeInt),
   checkpointRef: Schema.optional(CheckpointRef),
-  originatingThreadId: Schema.optional(ThreadId),
-  originatingTurnId: Schema.optional(TurnId),
 });
 export type BoardFileReference = typeof BoardFileReference.Type;
 
@@ -81,8 +83,6 @@ export const BoardDiagramShape = Schema.Struct({
   kind: Schema.Literal("diagram-shape"),
   shape: Schema.Literals(["rectangle", "ellipse", "diamond"]),
   label: Schema.String,
-  originatingThreadId: Schema.optional(ThreadId),
-  originatingTurnId: Schema.optional(TurnId),
 });
 export type BoardDiagramShape = typeof BoardDiagramShape.Type;
 
@@ -90,8 +90,6 @@ export const BoardGroup = Schema.Struct({
   ...BoardObjectBase,
   kind: Schema.Literal("group"),
   title: TrimmedNonEmptyString,
-  originatingThreadId: Schema.optional(ThreadId),
-  originatingTurnId: Schema.optional(TurnId),
 });
 export type BoardGroup = typeof BoardGroup.Type;
 
@@ -118,6 +116,10 @@ export const BoardRelationship = Schema.Struct({
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   tombstonedAt: Schema.NullOr(IsoDateTime),
+  originatingThreadId: Schema.optional(ThreadId),
+  originatingTurnId: Schema.optional(TurnId),
+  originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingOperationId: Schema.optional(CommandId),
 });
 export type BoardRelationship = typeof BoardRelationship.Type;
 
@@ -218,6 +220,8 @@ export const BoardCreateNoteCommand = Schema.Struct({
   text: Schema.String,
   originatingThreadId: Schema.optional(ThreadId),
   originatingTurnId: Schema.optional(TurnId),
+  originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
 
@@ -228,6 +232,33 @@ export const BoardUpdateNoteCommand = Schema.Struct({
   objectId: BoardObjectId,
   title: Schema.optional(TrimmedNonEmptyString),
   text: Schema.optional(Schema.String),
+  expectedRevision: BoardRevision,
+  createdAt: IsoDateTime,
+});
+
+export const BoardUpdateObjectCommand = Schema.Struct({
+  type: Schema.Literal("board.object.update"),
+  commandId: CommandId,
+  projectId: ProjectId,
+  objectId: BoardObjectId,
+  size: Schema.optional(BoardSize),
+  frameSize: Schema.optional(BoardFrameSize),
+  title: Schema.optional(TrimmedNonEmptyString),
+  shape: Schema.optional(Schema.Literals(["rectangle", "ellipse", "diamond"])),
+  label: Schema.optional(Schema.String),
+  path: Schema.optional(TrimmedNonEmptyString),
+  startLine: Schema.optional(Schema.NullOr(NonNegativeInt)),
+  endLine: Schema.optional(Schema.NullOr(NonNegativeInt)),
+  checkpointRef: Schema.optional(Schema.NullOr(CheckpointRef)),
+  expectedRevision: BoardRevision,
+  createdAt: IsoDateTime,
+});
+
+export const BoardPromoteNoteCommand = Schema.Struct({
+  type: Schema.Literal("board.note.promote"),
+  commandId: CommandId,
+  projectId: ProjectId,
+  objectId: BoardObjectId,
   expectedRevision: BoardRevision,
   createdAt: IsoDateTime,
 });
@@ -253,6 +284,8 @@ export const BoardCreateFileReferenceCommand = Schema.Struct({
   checkpointRef: Schema.optional(CheckpointRef),
   originatingThreadId: Schema.optional(ThreadId),
   originatingTurnId: Schema.optional(TurnId),
+  originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
 
@@ -266,6 +299,8 @@ export const BoardCreateDiagramShapeCommand = Schema.Struct({
   label: Schema.String,
   originatingThreadId: Schema.optional(ThreadId),
   originatingTurnId: Schema.optional(TurnId),
+  originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
 
@@ -279,6 +314,8 @@ export const BoardCreateGroupCommand = Schema.Struct({
   title: TrimmedNonEmptyString,
   originatingThreadId: Schema.optional(ThreadId),
   originatingTurnId: Schema.optional(TurnId),
+  originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
 
@@ -291,6 +328,21 @@ export const BoardCreateRelationshipCommand = Schema.Struct({
   label: Schema.optional(Schema.String),
   sourceObjectId: BoardObjectId,
   targetObjectId: BoardObjectId,
+  originatingThreadId: Schema.optional(ThreadId),
+  originatingTurnId: Schema.optional(TurnId),
+  originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingOperationId: Schema.optional(CommandId),
+  createdAt: IsoDateTime,
+});
+
+export const BoardUpdateRelationshipCommand = Schema.Struct({
+  type: Schema.Literal("board.relationship.update"),
+  commandId: CommandId,
+  projectId: ProjectId,
+  relationshipId: BoardRelationshipId,
+  label: Schema.optional(Schema.NullOr(Schema.String)),
+  tombstoned: Schema.optional(Schema.Boolean),
+  expectedRevision: BoardRevision,
   createdAt: IsoDateTime,
 });
 
@@ -370,6 +422,9 @@ export const BoardBatchCommand = Schema.Struct({
   projectId: ProjectId,
   operations: Schema.Array(BoardBatchOperation).check(Schema.isMinLength(1)),
   originatingThreadId: ThreadId,
+  originatingTurnId: Schema.optional(TurnId),
+  originatingProviderInstanceId: Schema.optional(ProviderInstanceId),
+  originatingOperationId: Schema.optional(CommandId),
   createdAt: IsoDateTime,
 });
 
@@ -379,11 +434,14 @@ export const BoardCommand = Schema.Union([
   BoardPlaceThreadFrameCommand,
   BoardCreateNoteCommand,
   BoardUpdateNoteCommand,
+  BoardUpdateObjectCommand,
+  BoardPromoteNoteCommand,
   BoardSetObjectTombstoneCommand,
   BoardCreateFileReferenceCommand,
   BoardCreateDiagramShapeCommand,
   BoardCreateGroupCommand,
   BoardCreateRelationshipCommand,
+  BoardUpdateRelationshipCommand,
   BoardSetGrantCommand,
   BoardSetThreadAuthorityCommand,
   BoardBatchCommand,

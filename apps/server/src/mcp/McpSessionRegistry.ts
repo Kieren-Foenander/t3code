@@ -1,4 +1,4 @@
-import { ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { ProviderInstanceId, ThreadId, type TurnId } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -32,6 +32,11 @@ export interface McpSessionRegistryShape {
    * credential even when it goes a long time without touching an MCP tool.
    */
   readonly touch: (threadId: ThreadId) => Effect.Effect<void>;
+  readonly setActiveTurn: (
+    threadId: ThreadId,
+    turnId: TurnId,
+    providerKind: string,
+  ) => Effect.Effect<void>;
   readonly revokeProviderSession: (providerSessionId: string) => Effect.Effect<void>;
   readonly revokeThread: (threadId: ThreadId) => Effect.Effect<void>;
   readonly revokeAll: Effect.Effect<void>;
@@ -182,6 +187,26 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
     },
   );
 
+  const setActiveTurn: McpSessionRegistryShape["setActiveTurn"] = Effect.fn(
+    "McpSessionRegistry.setActiveTurn",
+  )(function* (threadId, turnId, providerKind) {
+    const timestamp = yield* currentTimeMillis;
+    yield* SynchronizedRef.update(state, ({ records }) => {
+      const current = pruneDead(records, timestamp);
+      const next = new Map(current);
+      for (const [tokenHash, record] of current) {
+        if (record.scope.threadId === threadId) {
+          next.set(tokenHash, {
+            ...record,
+            scope: { ...record.scope, activeTurnId: turnId, providerKind },
+            lastAliveAt: timestamp,
+          });
+        }
+      }
+      return { records: next };
+    });
+  });
+
   const revokeWhere = (predicate: (record: CredentialRecord) => boolean) =>
     SynchronizedRef.update(state, ({ records }) => ({
       records: new Map(Array.from(records).filter(([, record]) => !predicate(record))),
@@ -191,6 +216,7 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
     issue,
     resolve,
     touch,
+    setActiveTurn,
     revokeProviderSession: Effect.fn("McpSessionRegistry.revokeProviderSession")(
       function* (providerSessionId) {
         yield* revokeWhere((record) => record.scope.providerSessionId === providerSessionId);
@@ -238,6 +264,15 @@ export const issueActiveMcpCredential = (
  */
 export const touchActiveMcpThread = (threadId: ThreadId): Effect.Effect<void> =>
   activeMcpSessionRegistry ? activeMcpSessionRegistry.touch(threadId) : Effect.void;
+
+export const setActiveMcpTurn = (
+  threadId: ThreadId,
+  turnId: TurnId,
+  providerKind: string,
+): Effect.Effect<void> =>
+  activeMcpSessionRegistry
+    ? activeMcpSessionRegistry.setActiveTurn(threadId, turnId, providerKind)
+    : Effect.void;
 
 export const revokeActiveMcpThread = (threadId: ThreadId): Effect.Effect<void> =>
   activeMcpSessionRegistry ? activeMcpSessionRegistry.revokeThread(threadId) : Effect.void;
