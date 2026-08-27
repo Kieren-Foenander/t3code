@@ -776,12 +776,27 @@ export const make = Effect.gen(function* () {
     ) {
       const repositoryNameWithOwner = resolveHeadRepositoryNameWithOwner(pullRequest) ?? "";
 
-      if (repositoryNameWithOwner.length === 0) {
-        yield* gitCore.fetchPullRequestBranch({
-          cwd,
-          prNumber: pullRequest.number,
-          branch: localBranch,
-        });
+      if (repositoryNameWithOwner.length === 0 && pullRequest.isCrossRepository === false) {
+        yield* gitCore
+          .fetchPullRequestBranch({
+            cwd,
+            prNumber: pullRequest.number,
+            branch: localBranch,
+          })
+          .pipe(
+            // Azure DevOps publishes no pull-request head ref for same-repository PRs.
+            Effect.catch(() =>
+              Effect.gen(function* () {
+                const remoteName = yield* gitCore.resolvePrimaryRemoteName(cwd);
+                yield* gitCore.fetchRemoteBranch({
+                  cwd,
+                  remoteName,
+                  remoteBranch: pullRequest.headBranch,
+                  localBranch,
+                });
+              }),
+            ),
+          );
         return;
       }
 

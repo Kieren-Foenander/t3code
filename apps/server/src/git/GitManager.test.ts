@@ -3679,6 +3679,88 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     }),
   );
 
+  it.effect("prepares a worktree PR thread on a host that publishes no pull request head ref", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      yield* initRepo(repoDir);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/pr-no-pull-ref"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "azure.txt"), "azure\n");
+      yield* runGit(repoDir, ["add", "azure.txt"]);
+      yield* runGit(repoDir, ["commit", "-m", "PR branch with no pull ref"]);
+      yield* runGit(repoDir, ["push", "origin", "feature/pr-no-pull-ref"]);
+      const headCommit = (yield* runGit(repoDir, ["rev-parse", "HEAD"])).stdout.trim();
+      yield* runGit(repoDir, ["checkout", "main"]);
+      yield* runGit(repoDir, ["branch", "-D", "feature/pr-no-pull-ref"]);
+
+      const { manager } = yield* makeManager({
+        ghScenario: {
+          pullRequest: {
+            number: 26855,
+            title: "PR with no pull ref",
+            url: "https://dev.azure.com/acme/project/_git/repo/pullrequest/26855",
+            baseRefName: "main",
+            headRefName: "feature/pr-no-pull-ref",
+            state: "open",
+            isCrossRepository: false,
+          },
+        },
+      });
+
+      const result = yield* preparePullRequestThread(manager, {
+        cwd: repoDir,
+        reference: "26855",
+        mode: "worktree",
+      });
+
+      expect(result.worktreePath).not.toBeNull();
+      expect(result.isOnPullRequestHead).toBe(true);
+      expect(
+        (yield* runGit(result.worktreePath as string, ["rev-parse", "HEAD"])).stdout.trim(),
+      ).toBe(headCommit);
+    }),
+  );
+
+  it.effect("does not use a remote branch when the pull request repository is unknown", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      yield* initRepo(repoDir);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/ambiguous-head"]);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "unrelated.txt"), "unrelated\n");
+      yield* runGit(repoDir, ["add", "unrelated.txt"]);
+      yield* runGit(repoDir, ["commit", "-m", "Unrelated same-named branch"]);
+      yield* runGit(repoDir, ["push", "origin", "feature/ambiguous-head"]);
+      yield* runGit(repoDir, ["checkout", "main"]);
+      yield* runGit(repoDir, ["branch", "-D", "feature/ambiguous-head"]);
+
+      const { manager } = yield* makeManager({
+        ghScenario: {
+          pullRequest: {
+            number: 26856,
+            title: "PR with unknown head repository",
+            url: "https://github.com/pingdotgg/codething-mvp/pull/26856",
+            baseRefName: "main",
+            headRefName: "feature/ambiguous-head",
+            state: "open",
+          },
+        },
+      });
+
+      const error = yield* preparePullRequestThread(manager, {
+        cwd: repoDir,
+        reference: "26856",
+        mode: "worktree",
+      }).pipe(Effect.flip);
+
+      expect(error._tag).toBe("GitPullRequestMaterializationError");
+    }),
+  );
+
   it.effect("preserves fork upstream tracking when preparing a worktree PR thread", () =>
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("t3code-git-manager-");

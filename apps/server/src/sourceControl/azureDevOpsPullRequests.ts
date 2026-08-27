@@ -15,22 +15,47 @@ export interface NormalizedAzureDevOpsPullRequestRecord {
   readonly headRefName: string;
   readonly state: "open" | "closed" | "merged";
   readonly updatedAt: Option.Option<DateTime.Utc>;
+  readonly isCrossRepository: boolean;
+  readonly headRepositoryNameWithOwner: string | null;
+  readonly headRepositoryOwnerLogin: string | null;
 }
 
 const AzureDevOpsPullRequestSchema = Schema.Struct({
   pullRequestId: PositiveInt,
   title: TrimmedNonEmptyString,
-  url: Schema.optional(Schema.String),
+  url: Schema.optional(Schema.NullOr(Schema.String)),
   repository: Schema.optional(
-    Schema.Struct({
-      name: Schema.optional(Schema.String),
-      webUrl: Schema.optional(Schema.String),
-      project: Schema.optional(
-        Schema.Struct({
-          name: Schema.optional(Schema.String),
-        }),
-      ),
-    }),
+    Schema.NullOr(
+      Schema.Struct({
+        name: Schema.optional(Schema.NullOr(Schema.String)),
+        webUrl: Schema.optional(Schema.NullOr(Schema.String)),
+        project: Schema.optional(
+          Schema.NullOr(
+            Schema.Struct({
+              name: Schema.optional(Schema.NullOr(Schema.String)),
+            }),
+          ),
+        ),
+      }),
+    ),
+  ),
+  forkSource: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        repository: Schema.optional(
+          Schema.NullOr(
+            Schema.Struct({
+              name: Schema.optional(Schema.NullOr(Schema.String)),
+              project: Schema.optional(
+                Schema.NullOr(
+                  Schema.Struct({ name: Schema.optional(Schema.NullOr(Schema.String)) }),
+                ),
+              ),
+            }),
+          ),
+        ),
+      }),
+    ),
   ),
   sourceRefName: TrimmedNonEmptyString,
   targetRefName: TrimmedNonEmptyString,
@@ -38,13 +63,17 @@ const AzureDevOpsPullRequestSchema = Schema.Struct({
   creationDate: Schema.optional(Schema.OptionFromNullOr(Schema.DateTimeUtcFromString)),
   closedDate: Schema.optional(Schema.OptionFromNullOr(Schema.DateTimeUtcFromString)),
   _links: Schema.optional(
-    Schema.Struct({
-      web: Schema.optional(
-        Schema.Struct({
-          href: Schema.String,
-        }),
-      ),
-    }),
+    Schema.NullOr(
+      Schema.Struct({
+        web: Schema.optional(
+          Schema.NullOr(
+            Schema.Struct({
+              href: Schema.optional(Schema.NullOr(Schema.String)),
+            }),
+          ),
+        ),
+      }),
+    ),
   ),
 });
 
@@ -161,6 +190,8 @@ function normalizeAzureDevOpsPullRequestUrl(
 function normalizeAzureDevOpsPullRequestRecord(
   raw: Schema.Schema.Type<typeof AzureDevOpsPullRequestSchema>,
 ): NormalizedAzureDevOpsPullRequestRecord {
+  const forkRepositoryName = trimOptionalString(raw.forkSource?.repository?.name);
+  const forkProjectName = trimOptionalString(raw.forkSource?.repository?.project?.name);
   return {
     number: raw.pullRequestId,
     title: raw.title,
@@ -171,6 +202,14 @@ function normalizeAzureDevOpsPullRequestRecord(
     updatedAt: (raw.closedDate ?? Option.none()).pipe(
       Option.orElse(() => raw.creationDate ?? Option.none()),
     ),
+    isCrossRepository: raw.forkSource != null,
+    headRepositoryNameWithOwner:
+      forkRepositoryName === null
+        ? null
+        : forkProjectName === null
+          ? forkRepositoryName
+          : `${forkProjectName}/${forkRepositoryName}`,
+    headRepositoryOwnerLogin: forkProjectName,
   };
 }
 

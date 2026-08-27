@@ -129,6 +129,121 @@ describe("AzureDevOpsCli.layer", () => {
     }).pipe(Effect.provide(layer)),
   );
 
+  it.effect("reads a pull request whose optional fields Azure answered with null", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              pullRequestId: 26855,
+              title: "Braze iam_click event",
+              url: "https://dev.azure.com/acme/411da70a/_apis/git/repositories/2697671b/pullRequests/26855",
+              repository: {
+                name: "repo",
+                webUrl: null,
+                project: { name: "project" },
+              },
+              sourceRefName: "refs/heads/feature/iam-click",
+              targetRefName: "refs/heads/main",
+              status: "active",
+              creationDate: "2026-01-02T00:00:00.000Z",
+              closedDate: null,
+              _links: null,
+            }),
+          ),
+        ),
+      );
+
+      const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+      const result = yield* az.getPullRequest({ cwd: "/repo", reference: "26855" });
+
+      assert.strictEqual(result.number, 26855);
+      assert.strictEqual(result.headRefName, "feature/iam-click");
+      assert.strictEqual(
+        result.url,
+        "https://dev.azure.com/acme/project/_git/repo/pullrequest/26855",
+      );
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("keeps listed pull requests whose optional fields Azure answered with null", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify([
+              {
+                pullRequestId: 7,
+                title: "Merged work",
+                url: "https://dev.azure.com/acme/411da70a/_apis/git/repositories/2697671b/pullRequests/7",
+                repository: { name: "repo", webUrl: null, project: { name: "project" } },
+                sourceRefName: "refs/heads/feature/merged",
+                targetRefName: "refs/heads/main",
+                status: "completed",
+                closedDate: "2026-01-03T00:00:00.000Z",
+                _links: null,
+              },
+            ]),
+          ),
+        ),
+      );
+
+      const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+      const result = yield* az.listPullRequests({
+        cwd: "/repo",
+        headSelector: "origin:feature/merged",
+        state: "merged",
+        limit: 10,
+      });
+
+      assert.strictEqual(result.length, 1);
+      assert.strictEqual(result[0]?.number, 7);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("preserves the source repository for pull requests from Azure forks", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              pullRequestId: 8,
+              title: "Forked work",
+              url: "https://dev.azure.com/acme/project/_apis/git/repositories/repo/pullRequests/8",
+              repository: { name: "repo", project: { name: "project" } },
+              forkSource: {
+                name: "refs/heads/feature/forked",
+                repository: { name: "repo-fork", project: { name: "contributor-project" } },
+              },
+              sourceRefName: "refs/heads/feature/forked",
+              targetRefName: "refs/heads/main",
+              status: "active",
+            }),
+          ),
+        ),
+      );
+
+      const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+      const result = yield* az.getPullRequest({ cwd: "/repo", reference: "8" });
+
+      assert.deepStrictEqual(
+        {
+          isCrossRepository: result.isCrossRepository,
+          headRepositoryNameWithOwner: result.headRepositoryNameWithOwner,
+          headRepositoryOwnerLogin: result.headRepositoryOwnerLogin,
+        },
+        {
+          isCrossRepository: true,
+          headRepositoryNameWithOwner: "contributor-project/repo-fork",
+          headRepositoryOwnerLogin: "contributor-project",
+        },
+      );
+    }).pipe(Effect.provide(layer)),
+  );
+
   it.effect("lists pull requests with Azure status and source branch arguments", () =>
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(
@@ -210,13 +325,32 @@ describe("AzureDevOpsCli.layer", () => {
       const az = yield* AzureDevOpsCli.AzureDevOpsCli;
       const result = yield* az.getRepositoryCloneUrls({
         cwd: "/repo",
-        repository: "repo",
+        repository: "project/repo",
       });
 
       assert.deepStrictEqual(result, {
         nameWithOwner: "project/repo",
         url: "https://dev.azure.com/acme/project/_git/repo",
         sshUrl: "git@ssh.dev.azure.com:v3/acme/project/repo",
+      });
+      expect(mockRun).toHaveBeenCalledWith({
+        operation: "AzureDevOpsCli.execute",
+        command: "az",
+        args: [
+          "repos",
+          "show",
+          "--detect",
+          "true",
+          "--repository",
+          "repo",
+          "--project",
+          "project",
+          "--only-show-errors",
+          "--output",
+          "json",
+        ],
+        cwd: "/repo",
+        timeoutMs: 30_000,
       });
     }).pipe(Effect.provide(layer)),
   );

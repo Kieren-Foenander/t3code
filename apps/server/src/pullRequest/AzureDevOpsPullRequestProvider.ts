@@ -177,9 +177,9 @@ export const make = Effect.gen(function* () {
       cli.getPullRequest({ cwd: input.cwd, number: input.number }).pipe(
         Effect.mapError(fail("getChangeRequestActivity")),
         Effect.flatMap((pullRequest) =>
-          (pullRequest.threadsUrl === null
+          (pullRequest.threads === null
             ? Effect.succeed({ comments: [], truncated: true })
-            : cli.listThreads({ cwd: input.cwd, threadsUrl: pullRequest.threadsUrl }).pipe(
+            : cli.listThreads({ cwd: input.cwd, route: pullRequest.threads }).pipe(
                 Effect.map((comments) => ({ comments, truncated: false })),
                 Effect.orElseSucceed(() => ({ comments: [], truncated: true })),
               )

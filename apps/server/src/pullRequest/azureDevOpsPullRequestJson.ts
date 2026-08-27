@@ -108,6 +108,13 @@ const RawViewerSchema = Schema.Struct({
   ),
 });
 
+export interface AzureDevOpsThreadsRoute {
+  readonly organization: string;
+  readonly project: string;
+  readonly repository: string;
+  readonly pullRequestId: number;
+}
+
 export interface AzureDevOpsPullRequest {
   readonly number: number;
   readonly title: string;
@@ -129,7 +136,7 @@ export interface AzureDevOpsPullRequest {
   readonly reviewRequestLogins: ReadonlyArray<string>;
   readonly reviewers: ReadonlyArray<PullRequestActor>;
   /** Where this pull request's threads live, when Azure said enough to work it out. */
-  readonly threadsUrl: string | null;
+  readonly threads: AzureDevOpsThreadsRoute | null;
   /** Whether Azure is set to complete this on its own once its policies pass. */
   readonly autoMergeEnabled: boolean;
 }
@@ -177,15 +184,17 @@ function toMergeability(value: string | null | undefined): PullRequestMergeabili
 }
 
 /**
- * The REST collection a pull request's threads hang from. Built from what Azure returned rather
- * than from the local remote, whose shape differs between the modern, legacy and SSH forms.
+ * The route a pull request's threads hang from. Built from what Azure returned rather than from
+ * the local remote, whose shape differs between the modern, legacy and SSH forms.
  */
-function toThreadsUrl(raw: Schema.Schema.Type<typeof RawPullRequestSchema>): string | null {
-  const base = azureDevOpsOrganizationBaseFromRestApiUrl(raw.url);
+function toThreadsRoute(
+  raw: Schema.Schema.Type<typeof RawPullRequestSchema>,
+): AzureDevOpsThreadsRoute | null {
+  const organization = azureDevOpsOrganizationBaseFromRestApiUrl(raw.url);
   const project = trimmed(raw.repository?.project?.name);
   const repository = trimmed(raw.repository?.name);
-  if (base === null || project === null || repository === null) return null;
-  return `${base}/${encodeURIComponent(project)}/_apis/git/repositories/${encodeURIComponent(repository)}/pullRequests/${raw.pullRequestId}/threads`;
+  if (organization === null || project === null || repository === null) return null;
+  return { organization, project, repository, pullRequestId: raw.pullRequestId };
 }
 
 /**
@@ -230,7 +239,7 @@ function toPullRequest(
     body: raw.description ?? "",
     reviewRequestLogins: reviewers.map((reviewer) => reviewer.login),
     reviewers,
-    threadsUrl: toThreadsUrl(raw),
+    threads: toThreadsRoute(raw),
     autoMergeEnabled: (raw.autoCompleteSetBy ?? null) !== null,
   };
 }

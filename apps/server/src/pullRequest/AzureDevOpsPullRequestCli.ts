@@ -18,6 +18,7 @@ import {
   decodeThreadsJson,
   decodeViewerJson,
   type AzureDevOpsPullRequest,
+  type AzureDevOpsThreadsRoute,
 } from "./azureDevOpsPullRequestJson.ts";
 import type { ProviderListCursor } from "./PullRequestProvider.ts";
 
@@ -146,10 +147,10 @@ export class AzureDevOpsPullRequestCli extends Context.Service<
       readonly number: number;
     }) => Effect.Effect<AzureDevOpsPullRequest, AzureDevOpsPullRequestCliError>;
 
-    /** Threads are not reachable through `az repos pr`, so they come from the REST API. */
+    /** Uses `az devops invoke` so thread reads share the extension's authentication. */
     readonly listThreads: (input: {
       readonly cwd: string;
-      readonly threadsUrl: string;
+      readonly route: AzureDevOpsThreadsRoute;
     }) => Effect.Effect<ReadonlyArray<PullRequestComment>, AzureDevOpsPullRequestCliError>;
 
     readonly runPullRequestAction: (input: {
@@ -433,11 +434,20 @@ export const make = Effect.gen(function* () {
       executeJson({
         cwd: input.cwd,
         args: [
-          "rest",
-          "--method",
-          "get",
-          "--url",
-          `${input.threadsUrl}?api-version=${REST_API_VERSION}`,
+          "devops",
+          "invoke",
+          "--org",
+          input.route.organization,
+          "--area",
+          "git",
+          "--resource",
+          "pullRequestThreads",
+          "--route-parameters",
+          `project=${input.route.project}`,
+          `repositoryId=${input.route.repository}`,
+          `pullRequestId=${input.route.pullRequestId}`,
+          "--api-version",
+          REST_API_VERSION,
         ],
       }).pipe(
         Effect.flatMap((result) => {

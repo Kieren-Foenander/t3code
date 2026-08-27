@@ -476,7 +476,7 @@ layer("AzureDevOpsPullRequestCli.layer", (it) => {
     }),
   );
 
-  it.effect("reads the conversation through the REST API, pinned to a version", () =>
+  it.effect("reads the conversation through the Azure DevOps extension, pinned to a version", () =>
     Effect.gen(function* () {
       mockedExecute.mockReturnValueOnce(
         Effect.succeed(
@@ -499,14 +499,34 @@ layer("AzureDevOpsPullRequestCli.layer", (it) => {
 
       const comments = yield* cli.listThreads({
         cwd: "/w",
-        threadsUrl: "https://dev.azure.com/acme/platform/_apis/git/r/web/pullRequests/42/threads",
+        route: {
+          organization: "https://dev.azure.com/acme",
+          project: "-platform tools",
+          repository: "-web repo",
+          pullRequestId: 42,
+        },
       });
 
       assert.strictEqual(comments.length, 1);
-      expect(argsOfCall(0)).toContain("rest");
-      expect(argsOfCall(0)).toContain(
-        "https://dev.azure.com/acme/platform/_apis/git/r/web/pullRequests/42/threads?api-version=7.1",
-      );
+      assert.deepStrictEqual(argsOfCall(0), [
+        "devops",
+        "invoke",
+        "--org",
+        "https://dev.azure.com/acme",
+        "--area",
+        "git",
+        "--resource",
+        "pullRequestThreads",
+        "--route-parameters",
+        "project=-platform tools",
+        "repositoryId=-web repo",
+        "pullRequestId=42",
+        "--api-version",
+        "7.1",
+        "--only-show-errors",
+        "--output",
+        "json",
+      ]);
     }),
   );
 

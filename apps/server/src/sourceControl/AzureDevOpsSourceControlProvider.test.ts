@@ -24,6 +24,9 @@ it.effect("maps Azure DevOps PR summaries into provider-neutral change requests"
           headRefName: "feature/source-control",
           state: "open",
           updatedAt: Option.none(),
+          isCrossRepository: false,
+          headRepositoryNameWithOwner: null,
+          headRepositoryOwnerLogin: null,
         }),
     });
 
@@ -42,7 +45,44 @@ it.effect("maps Azure DevOps PR summaries into provider-neutral change requests"
       state: "open",
       updatedAt: Option.none(),
       isCrossRepository: false,
+      headRepositoryNameWithOwner: null,
+      headRepositoryOwnerLogin: null,
     });
+  }),
+);
+
+it.effect("preserves Azure fork repository metadata for pull request checkout", () =>
+  Effect.gen(function* () {
+    const provider = yield* makeProvider({
+      getPullRequest: () =>
+        Effect.succeed({
+          number: 43,
+          title: "Forked change",
+          url: "https://dev.azure.com/acme/project/_git/repo/pullrequest/43",
+          baseRefName: "main",
+          headRefName: "feature/forked",
+          state: "open",
+          updatedAt: Option.none(),
+          isCrossRepository: true,
+          headRepositoryNameWithOwner: "contributor-project/repo-fork",
+          headRepositoryOwnerLogin: "contributor-project",
+        }),
+    });
+
+    const changeRequest = yield* provider.getChangeRequest({ cwd: "/repo", reference: "43" });
+
+    assert.deepStrictEqual(
+      {
+        isCrossRepository: changeRequest.isCrossRepository,
+        headRepositoryNameWithOwner: changeRequest.headRepositoryNameWithOwner,
+        headRepositoryOwnerLogin: changeRequest.headRepositoryOwnerLogin,
+      },
+      {
+        isCrossRepository: true,
+        headRepositoryNameWithOwner: "contributor-project/repo-fork",
+        headRepositoryOwnerLogin: "contributor-project",
+      },
+    );
   }),
 );
 
