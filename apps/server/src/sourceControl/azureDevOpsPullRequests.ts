@@ -204,11 +204,9 @@ function normalizeAzureDevOpsPullRequestRecord(
     ),
     isCrossRepository: raw.forkSource != null,
     headRepositoryNameWithOwner:
-      forkRepositoryName === null
+      forkRepositoryName === null || forkProjectName === null
         ? null
-        : forkProjectName === null
-          ? forkRepositoryName
-          : `${forkProjectName}/${forkRepositoryName}`,
+        : `${forkProjectName}/${forkRepositoryName}`,
     headRepositoryOwnerLogin: forkProjectName,
   };
 }

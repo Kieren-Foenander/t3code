@@ -244,6 +244,38 @@ describe("AzureDevOpsCli.layer", () => {
     }).pipe(Effect.provide(layer)),
   );
 
+  it.effect("does not expose an ambiguous Azure fork repository without its project", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify({
+              pullRequestId: 9,
+              title: "Forked work with incomplete identity",
+              url: "https://dev.azure.com/acme/project/_apis/git/repositories/repo/pullRequests/9",
+              repository: { name: "repo", project: { name: "project" } },
+              forkSource: {
+                name: "refs/heads/feature/forked",
+                repository: { name: "repo" },
+              },
+              sourceRefName: "refs/heads/feature/forked",
+              targetRefName: "refs/heads/main",
+              status: "active",
+            }),
+          ),
+        ),
+      );
+
+      const az = yield* AzureDevOpsCli.AzureDevOpsCli;
+      const result = yield* az.getPullRequest({ cwd: "/repo", reference: "9" });
+
+      assert.strictEqual(result.isCrossRepository, true);
+      assert.strictEqual(result.headRepositoryNameWithOwner, null);
+      assert.strictEqual(result.headRepositoryOwnerLogin, null);
+    }).pipe(Effect.provide(layer)),
+  );
+
   it.effect("lists pull requests with Azure status and source branch arguments", () =>
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(
