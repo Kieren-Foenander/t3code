@@ -190,15 +190,12 @@ describe("decodePullRequestJson", () => {
   it("works out where the conversation lives from what Azure returned", () => {
     const detail = expectSuccess(decodePullRequestJson(asJson(pullRequest())));
 
-    expect(detail?.threads).toEqual({
-      organization: "https://dev.azure.com/acme",
-      project: "platform",
-      repository: "web",
-      pullRequestId: 42,
-    });
+    expect(detail?.threadsUrl).toBe(
+      "https://dev.azure.com/acme/platform/_apis/git/repositories/web/pullRequests/42/threads",
+    );
   });
 
-  it("reports no conversation route when Azure said too little to build one", () => {
+  it("reports no conversation url when Azure said too little to build one", () => {
     // A web link places the pull request, but without the REST url and repository there is
     // nothing to hang a threads collection off.
     const detail = expectSuccess(
@@ -215,7 +212,7 @@ describe("decodePullRequestJson", () => {
       ),
     );
 
-    expect(detail?.threads).toBeNull();
+    expect(detail?.threadsUrl).toBeNull();
   });
 
   it("returns nothing when Azure gave no way to place the pull request at all", () => {

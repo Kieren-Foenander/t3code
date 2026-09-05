@@ -891,8 +891,24 @@ export const make = Effect.gen(function* () {
     cwd: string,
     pullRequest: ResolvedPullRequest & PullRequestHeadRemoteInfo,
     localBranch = pullRequest.headBranch,
-  ) =>
-    materializePullRequestHeadBranchBase(cwd, pullRequest, localBranch).pipe(
+  ) => {
+    const headRepository = resolveHeadRepositoryNameWithOwner(pullRequest);
+    if (pullRequest.isCrossRepository === true && headRepository === null) {
+      return Effect.fail(
+        new GitPullRequestMaterializationError({
+          cwd,
+          pullRequestNumber: pullRequest.number,
+          headRepository,
+          headBranch: pullRequest.headBranch,
+          localBranch,
+          cause: new Error(
+            "Cross-repository pull request is missing its head repository identity.",
+          ),
+        }),
+      );
+    }
+
+    return materializePullRequestHeadBranchBase(cwd, pullRequest, localBranch).pipe(
       Effect.catch((primaryCause) =>
         gitCore
           .fetchPullRequestBranch({
@@ -919,6 +935,7 @@ export const make = Effect.gen(function* () {
           ),
       ),
     );
+  };
   const tempDir = process.env.TMPDIR ?? process.env.TEMP ?? process.env.TMP ?? "/tmp";
   const canonicalizeExistingPath = (value: string) =>
     fileSystem.realPath(value).pipe(Effect.orElseSucceed(() => value));

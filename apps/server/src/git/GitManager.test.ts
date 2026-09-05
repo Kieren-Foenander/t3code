@@ -4428,7 +4428,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     }),
   );
 
-  it.effect("does not use a remote branch when the pull request repository is unknown", () =>
+  it.effect("fails closed when a fork pull request repository is unknown", () =>
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("t3code-git-manager-");
       yield* initRepo(repoDir);
@@ -4443,7 +4443,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       yield* runGit(repoDir, ["checkout", "main"]);
       yield* runGit(repoDir, ["branch", "-D", "feature/ambiguous-head"]);
 
-      const { manager } = yield* makeManager({
+      const { manager, ghCalls } = yield* makeManager({
         ghScenario: {
           pullRequest: {
             number: 26856,
@@ -4452,6 +4452,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
             baseRefName: "main",
             headRefName: "feature/ambiguous-head",
             state: "open",
+            isCrossRepository: true,
           },
         },
       });
@@ -4463,6 +4464,8 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       }).pipe(Effect.flip);
 
       expect(error._tag).toBe("GitPullRequestMaterializationError");
+      expect(ghCalls.some((call) => call.startsWith("repo view "))).toBe(false);
+      expect(ghCalls).not.toContain("pr checkout 26856 --force");
     }),
   );
 

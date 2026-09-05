@@ -18,7 +18,6 @@ import {
   decodeThreadsJson,
   decodeViewerJson,
   type AzureDevOpsPullRequest,
-  type AzureDevOpsThreadsRoute,
 } from "./azureDevOpsPullRequestJson.ts";
 import type { ProviderListCursor } from "./PullRequestProvider.ts";
 
@@ -112,6 +111,7 @@ export type AzureDevOpsPullRequestCliError =
 
 /** The version every REST call below is pinned to, so a new default cannot reshape a response. */
 const REST_API_VERSION = "7.1";
+const AZURE_DEVOPS_RESOURCE_ID = "499b84ac-1321-427f-aa17-267ca6975798";
 const PULL_REQUEST_LIST_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 
 export class AzureDevOpsPullRequestCli extends Context.Service<
@@ -148,10 +148,10 @@ export class AzureDevOpsPullRequestCli extends Context.Service<
       readonly number: number;
     }) => Effect.Effect<AzureDevOpsPullRequest, AzureDevOpsPullRequestCliError>;
 
-    /** Uses `az devops invoke` so thread reads share the extension's authentication. */
+    /** Threads are not reachable through `az repos pr`, so they come from the REST API. */
     readonly listThreads: (input: {
       readonly cwd: string;
-      readonly route: AzureDevOpsThreadsRoute;
+      readonly threadsUrl: string;
     }) => Effect.Effect<ReadonlyArray<PullRequestComment>, AzureDevOpsPullRequestCliError>;
 
     readonly runPullRequestAction: (input: {
@@ -451,20 +451,13 @@ export const make = Effect.gen(function* () {
       executeJson({
         cwd: input.cwd,
         args: [
-          "devops",
-          "invoke",
-          "--org",
-          input.route.organization,
-          "--area",
-          "git",
+          "rest",
+          "--method",
+          "get",
+          "--url",
+          `${input.threadsUrl}?api-version=${REST_API_VERSION}`,
           "--resource",
-          "pullRequestThreads",
-          "--route-parameters",
-          `project=${input.route.project}`,
-          `repositoryId=${input.route.repository}`,
-          `pullRequestId=${input.route.pullRequestId}`,
-          "--api-version",
-          REST_API_VERSION,
+          AZURE_DEVOPS_RESOURCE_ID,
         ],
       }).pipe(
         Effect.flatMap((result) => {
