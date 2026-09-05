@@ -61,6 +61,7 @@ function toChangeRequest(summary: {
   readonly baseRefName: string;
   readonly headRefName: string;
   readonly state: "open" | "closed" | "merged";
+  readonly isDraft?: boolean;
   readonly updatedAt: ChangeRequest["updatedAt"];
   readonly isCrossRepository: boolean;
   readonly headRepositoryNameWithOwner: string | null;
@@ -74,6 +75,7 @@ function toChangeRequest(summary: {
     baseRefName: summary.baseRefName,
     headRefName: summary.headRefName,
     state: summary.state,
+    ...(summary.isDraft === true ? { isDraft: true } : {}),
     updatedAt: summary.updatedAt,
     isCrossRepository: summary.isCrossRepository,
     headRepositoryNameWithOwner: summary.headRepositoryNameWithOwner,

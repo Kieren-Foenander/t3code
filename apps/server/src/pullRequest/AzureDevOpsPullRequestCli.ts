@@ -112,6 +112,7 @@ export type AzureDevOpsPullRequestCliError =
 
 /** The version every REST call below is pinned to, so a new default cannot reshape a response. */
 const REST_API_VERSION = "7.1";
+const PULL_REQUEST_LIST_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 
 export class AzureDevOpsPullRequestCli extends Context.Service<
   AzureDevOpsPullRequestCli,
@@ -224,7 +225,13 @@ function actionArgs(
     // Auto-complete is Azure's own name for it: the pull request stays active and Azure completes
     // it once its policies pass. The squash choice is stored with it, as it is for a merge now.
     case "enable-auto-merge":
-      return ["--auto-complete", "true", "--squash", mergeMethod === "squash" ? "true" : "false"];
+      return [
+        "--auto-complete",
+        "true",
+        ...(mergeMethod === undefined
+          ? []
+          : ["--squash", mergeMethod === "squash" ? "true" : "false"]),
+      ];
     case "disable-auto-merge":
       return ["--auto-complete", "false"];
     case "ready":
@@ -238,6 +245,10 @@ function actionArgs(
       return [];
     case "reopen":
       return ["--status", "active"];
+    // Never reached: this host does not declare the action, so the service refuses it first.
+    case "revert":
+    case "approve-workflows":
+      throw new Error(`Azure DevOps pull request action ${action} is unsupported`);
   }
 }
 
@@ -259,10 +270,15 @@ export const make = Effect.gen(function* () {
   // how to read all of them.
   const detectArgs = ["--detect", "true"] as const;
 
-  const executeJson = (input: { readonly cwd: string; readonly args: ReadonlyArray<string> }) =>
+  const executeJson = (input: {
+    readonly cwd: string;
+    readonly args: ReadonlyArray<string>;
+    readonly maxOutputBytes?: number;
+  }) =>
     azure.execute({
       cwd: input.cwd,
       args: [...input.args, "--only-show-errors", "--output", "json"],
+      ...(input.maxOutputBytes === undefined ? {} : { maxOutputBytes: input.maxOutputBytes }),
     });
 
   /**
@@ -291,6 +307,7 @@ export const make = Effect.gen(function* () {
     const top = remaining + 1;
     return executeJson({
       cwd: input.cwd,
+      maxOutputBytes: PULL_REQUEST_LIST_MAX_OUTPUT_BYTES,
       args: [
         "repos",
         "pr",
